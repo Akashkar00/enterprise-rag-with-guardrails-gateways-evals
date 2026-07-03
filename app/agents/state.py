@@ -14,6 +14,9 @@ class AgentState(TypedDict):
     retry_count: int
     needs_retry: bool
     retrieval_failed: bool
+    # Set by the retrieval/context guard when injection markers were stripped
+    # from one or more retrieved documents.
+    injection_detected: bool
     # Routing decision emitted by the document grader:
     #   "generate"  -> relevant docs found, proceed to responder
     #   "rewrite"   -> no relevant docs, retry budget remains (query phrasing issue)

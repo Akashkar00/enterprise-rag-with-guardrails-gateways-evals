@@ -10,6 +10,8 @@ from app.agents.nodes.rewriter import rewrite_node
 from app.agents.nodes.web_search import web_search_node
 from app.agents.nodes.clarify import clarify_node
 from app.agents.nodes.retrieval_failure import retrieval_failure_node
+from app.agents.nodes.context_guard import context_guard_node
+from app.agents.nodes.output_guard import output_guard_node
 from app.agents.nodes.responder import generate_node
 
 
@@ -22,6 +24,8 @@ workflow.add_node("rewriter", rewrite_node)
 workflow.add_node("web_search", web_search_node)
 workflow.add_node("clarify_user", clarify_node)
 workflow.add_node("handle_retrieval_failure", retrieval_failure_node)
+workflow.add_node("context_guard", context_guard_node)
+workflow.add_node("output_guard", output_guard_node)
 workflow.add_node("responder", generate_node)
 
 
@@ -67,23 +71,28 @@ def route_grade_documents(state: AgentState):
     # Three-way routing based on the grader's failure-type assessment:
     #   rewrite   -> phrasing issue, re-query the same corpus
     #   websearch -> knowledge gap, go to an external source
-    #   generate  -> relevant docs found
+    #   generate  -> relevant docs found → screen context before generating
     action = state.get("next_action", "generate")
     if action == "rewrite":
         return "rewriter"
     if action == "websearch":
         return "web_search"
-    return "responder"
+    return "context_guard"
 
 
 workflow.add_conditional_edges(
     "grade_documents",
     route_grade_documents,
-    {"rewriter": "rewriter", "web_search": "web_search", "responder": "responder"},
+    {"rewriter": "rewriter", "web_search": "web_search", "context_guard": "context_guard"},
 )
 workflow.add_edge("rewriter", "retriever")
-workflow.add_edge("web_search", "responder")
-workflow.add_edge("responder", END)
+# Both document-bearing paths funnel through the retrieval/context guard before
+# reaching the LLM, so untrusted retrieved text is always screened + sanitized.
+workflow.add_edge("web_search", "context_guard")
+workflow.add_edge("context_guard", "responder")
+# Every answer (RAG or conversational) passes the output guard before returning.
+workflow.add_edge("responder", "output_guard")
+workflow.add_edge("output_guard", END)
 
 
 # --- Checkpointer: Postgres in cloud, MemorySaver locally ---

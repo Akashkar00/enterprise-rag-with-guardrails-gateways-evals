@@ -7,7 +7,7 @@ A production-grade RAG system built with **LangGraph**, **NeMo Guardrails**, **P
 ## Key Features
 
 - **Agentic Intelligence** — LangGraph cyclic graph: Planner → Retriever → Responder with persistent memory across sessions
-- **Two-Gate Safety** — Gate 1: NeMo Guardrails (blocks jailbreak/off-topic); Gate 2: Redis Semantic Cache (serves cached answers in ~50ms)
+- **Four-Gate Safety** — Gate 1: NeMo Guardrails (blocks jailbreak/off-topic); Gate 2: Redis Semantic Cache (serves cached answers in ~50ms); Gate 3: Retrieval Guard + Context Sanitization (strips prompt-injection from retrieved docs, isolates untrusted context); Gate 4: Output Guard (PII redaction + policy/toxicity validation)
 - **Persistent Memory** — LangGraph `PostgresSaver` on Cloud SQL — conversation history survives container restarts and scale-to-zero
 - **LLM Gateway** — Portkey routes all LLM calls with automatic fallback (Llama 3.3 70B → Llama 3.1 8B), full dashboard visibility
 - **Enterprise Search** — Qdrant Cloud vector search + FlashRank local reranker
@@ -56,7 +56,9 @@ graph TB
         subgraph AGENT ["LangGraph Agent"]
             PL["🗺️ Planner"]
             RT["🔍 Retriever"]
+            CG{"🛡️ Gate 3\nRetrieval Guard +\nContext Sanitization"}
             RS["💬 Responder"]
+            OG{"🛡️ Gate 4\nOutput Guard\nPII + Policy"}
         end
         MEM[("💾 PostgresSaver\nCloud SQL Postgres 15\npersists across restarts")]
     end
@@ -94,10 +96,10 @@ graph TB
     G2 -->|HIT| CHAT
     G2 -->|MISS| PL
     PL --> RT --> QD --> RT
-    RT --> RS --> PK --> LLM1
+    RT --> CG --> RS --> OG --> PK --> LLM1
     PK -.->|fallback| LLM2
-    RS --> MEM --> PL
-    RS -->|cache| G2
+    OG --> MEM --> PL
+    OG -->|cache| G2
     G2 --- REDIS
 
     GCS1 -->|event| EA --> SVC
@@ -123,6 +125,8 @@ graph TB
 │   │   └── nodes/
 │   │       ├── planner.py        # Intent classification node
 │   │       ├── retriever.py      # Qdrant search + FlashRank reranker node
+│   │       ├── context_guard.py  # Gate 3: retrieval guardrails + context sanitization
+│   │       ├── output_guard.py   # Gate 4: output PII redaction + policy/toxicity check
 │   │       └── responder.py      # Answer generation node
 │   ├── gateway/
 │   │   └── client.py             # Portkey LLM gateway — primary + fallback routing
