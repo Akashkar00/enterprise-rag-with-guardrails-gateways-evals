@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Enterprise Agentic RAG — Live Architecture Flow</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --panel:#121933;
+    --panel2:#0f1630;
+    --line:#2a3763;
+    --text:#e7ecff;
+    --sub:#93a0c9;
+    --accent:#4f8cff;
+    --accent2:#7c5cff;
+    --green:#33d17a;
+    --amber:#ffb547;
+    --red:#ff5c7a;
+    --cyan:#3ee6c5;
+    --pink:#ff6fb0;
+    --gate:#ffcf5c;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;background:radial-gradient(1200px 800px at 20% 0%, #16204a 0%, var(--bg) 55%) fixed;
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:1400px;margin:0 auto;padding:28px 20px 80px;}
+  header{text-align:center;margin-bottom:8px;}
+  header h1{
+    font-size:28px;margin:0 0 6px;font-weight:800;
+    background:linear-gradient(90deg,#8fb4ff,#c9a8ff,#7ce8d6);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    letter-spacing:.3px;
+  }
+  header p{color:var(--sub);margin:0;font-size:13.5px;}
+  .legend{
+    display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin:18px 0 26px;
+    font-size:12px;color:var(--sub);
+  }
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;}
+  .dot.live{background:var(--green);box-shadow:0 0 8px var(--green);}
+  .dot.gate{background:var(--gate);box-shadow:0 0 8px var(--gate);}
+  .dot.infra{background:var(--accent);box-shadow:0 0 8px var(--accent);}
+  .dot.ext{background:var(--pink);box-shadow:0 0 8px var(--pink);}
+  .dot.new{background:var(--cyan);box-shadow:0 0 8px var(--cyan);}
+
+  .tabs{display:flex;justify-content:center;gap:8px;margin-bottom:22px;}
+  .tab-btn{
+    background:var(--panel);border:1px solid var(--line);color:var(--sub);
+    padding:9px 18px;border-radius:999px;font-size:13px;cursor:pointer;font-weight:600;
+    transition:.2s;
+  }
+  .tab-btn.active{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;border-color:transparent;}
+  .tab-btn:hover{color:#fff;}
+
+  .stage{display:none;}
+  .stage.active{display:block;animation:fadein .4s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+  svg{width:100%;height:auto;display:block;overflow:visible;}
+
+  .card{
+    fill:var(--panel);stroke:var(--line);stroke-width:1.4;rx:12;ry:12;
+    filter:drop-shadow(0 4px 14px rgba(0,0,0,.35));
+  }
+  .card.gate{stroke:var(--gate);}
+  .card.infra{stroke:var(--accent);}
+  .card.ext{stroke:var(--pink);}
+  .card.new{stroke:var(--cyan);}
+  .card.group{fill:var(--panel2);stroke:var(--line);stroke-dasharray:4 4;}
+
+  .label{fill:var(--text);font-size:12.5px;font-weight:700;font-family:inherit;}
+  .sub{fill:var(--sub);font-size:10px;font-family:inherit;}
+  .group-title{fill:var(--sub);font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
+  .badge{font-size:9px;font-weight:800;font-family:inherit;}
+  .badge-bg{rx:7;ry:7;}
+
+  .flow-line{fill:none;stroke:var(--line);stroke-width:2;}
+  .flow-line.gate-line{stroke:#4a4530;}
+  .flow-line.dashed{stroke-dasharray:5 5;}
+
+  .flow-dot{r:4;filter:drop-shadow(0 0 4px currentColor);}
+  .pulse-ring{fill:none;stroke-width:2;opacity:0;}
+
+  @keyframes ringpulse{
+    0%{opacity:.9;r:14;stroke-width:2.5;}
+    100%{opacity:0;r:34;stroke-width:0;}
+  }
+  .ring-anim{animation:ringpulse 2.2s ease-out infinite;}
+
+  .node-icon{font-size:18px;}
+
+  .footer-note{
+    text-align:center;color:var(--sub);font-size:12px;margin-top:26px;line-height:1.7;
+  }
+  .footer-note b{color:var(--text);}
+  .verified{color:var(--green);font-weight:700;}
+
+  .panel-heading{
+    text-align:center;font-size:14px;font-weight:700;color:var(--text);margin:6px 0 18px;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .panel-heading .dot{margin-right:2px;}
+
+  @media (max-width: 720px){
+    header h1{font-size:20px;}
+    .legend{font-size:10.5px;gap:10px;}
+    .tab-btn{padding:7px 12px;font-size:11.5px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Enterprise Agentic RAG — Live System Flow</h1>
+    <p>Four independent Cloud Run microservices · Postgres memory · Redis semantic cache · Event-driven ingestion · Qdrant vector search</p>
+  </header>
+
+  <div class="legend">
+    <span><i class="dot live"></i> Verified live this session</span>
+    <span><i class="dot gate"></i> Safety gate</span>
+    <span><i class="dot infra"></i> GCP infra</span>
+    <span><i class="dot new"></i> Newly provisioned</span>
+    <span><i class="dot ext"></i> External service</span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="query">💬 Query Flow (Gates 1–3)</button>
+    <button class="tab-btn" data-tab="agent">🧠 LangGraph Agent (Gate 3 detail)</button>
+    <button class="tab-btn" data-tab="ingest">📥 Event-Driven Ingestion</button>
+  </div>
+
+  <!-- ================= STAGE 1: QUERY FLOW ================= -->
+  <div class="stage active" id="stage-query">
+    <div class="panel-heading"><i class="dot live"></i> rag-api verified: PostgresSaver active, semantic cache HIT confirmed in 2.2s round-trip</div>
+    <svg viewBox="0 0 1360 620" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#5b6aa0"/>
+        </marker>
+      </defs>
+
+      <!-- User -->
+      <rect class="card" x="30" y="270" width="130" height="80" rx="12"/>
+      <text class="node-icon" x="95" y="305" text-anchor="middle">🧑</text>
+      <text class="label" x="95" y="330" text-anchor="middle">User</text>
+      <text class="sub" x="95" y="343" text-anchor="middle">browser / client</text>
+
+      <!-- UI -->
+      <rect class="card" x="210" y="255" width="150" height="110" rx="12"/>
+      <text class="node-icon" x="285" y="290" text-anchor="middle">🖥️</text>
+      <text class="label" x="285" y="315" text-anchor="middle">Streamlit UI</text>
+      <text class="sub" x="285" y="329" text-anchor="middle">rag-ui · Cloud Run</text>
+      <rect class="badge-bg" x="235" y="338" width="100" height="16" fill="#3a2f12"/>
+      <text class="badge" x="285" y="349" text-anchor="middle" fill="#ffcf5c">PRIVATE (org policy)</text>
+
+      <!-- Gate 1 -->
+      <rect class="card gate" x="410" y="60" width="150" height="90" rx="12"/>
+      <text class="node-icon" x="485" y="92" text-anchor="middle">🛡️</text>
+      <text class="label" x="485" y="115" text-anchor="middle">Gate 1</text>
+      <text class="sub" x="485" y="129" text-anchor="middle">NeMo Guardrails</text>
+      <text class="sub" x="485" y="141" text-anchor="middle">blocks jailbreak / off-topic</text>
+
+      <!-- Gate 2 -->
+      <rect class="card gate" x="620" y="60" width="160" height="110" rx="12"/>
+      <text class="node-icon" x="700" y="92" text-anchor="middle">⚡</text>
+      <text class="label" x="700" y="115" text-anchor="middle">Gate 2</text>
+      <text class="sub" x="700" y="129" text-anchor="middle">Redis Semantic Cache</text>
+      <text class="sub" x="700" y="142" text-anchor="middle">check_cache() · ~50ms HIT</text>
+      <rect class="badge-bg" x="655" y="150" width="90" height="15" fill="#0f2f1f"/>
+      <text class="badge" x="700" y="160" text-anchor="middle" fill="#33d17a">HIT VERIFIED</text>
+
+      <!-- Gate 3 -->
+      <rect class="card gate" x="840" y="60" width="170" height="90" rx="12"/>
+      <text class="node-icon" x="925" y="92" text-anchor="middle">🧠</text>
+      <text class="label" x="925" y="115" text-anchor="middle">Gate 3</text>
+      <text class="sub" x="925" y="129" text-anchor="middle">LangGraph RAG Agent</text>
+      <text class="sub" x="925" y="141" text-anchor="middle">planner→retriever→responder</text>
+
+      <!-- Backend container -->
+      <rect class="card group" x="390" y="20" width="640" height="170" rx="14"/>
+      <text class="group-title" x="410" y="15">rag-api · FastAPI · Cloud Run (auth required)</text>
+
+      <!-- Redis -->
+      <rect class="card infra new" x="620" y="230" width="160" height="90" rx="12"/>
+      <text class="node-icon" x="700" y="262" text-anchor="middle">🔴</text>
+      <text class="label" x="700" y="285" text-anchor="middle">Memorystore Redis</text>
+      <text class="sub" x="700" y="298" text-anchor="middle">10.139.101.203:6379</text>
+      <text class="sub" x="700" y="310" text-anchor="middle">private IP · basic tier</text>
+
+      <!-- Postgres -->
+      <rect class="card infra new" x="840" y="230" width="170" height="100" rx="12"/>
+      <text class="node-icon" x="925" y="262" text-anchor="middle">🐘</text>
+      <text class="label" x="925" y="285" text-anchor="middle">Cloud SQL Postgres 15</text>
+      <text class="sub" x="925" y="298" text-anchor="middle">rag-postgres / rag_memory</text>
+      <text class="sub" x="925" y="310" text-anchor="middle">PostgresSaver checkpointer</text>
+      <rect class="badge-bg" x="880" y="317" width="90" height="15" fill="#0f2f1f"/>
+      <text class="badge" x="925" y="327" text-anchor="middle" fill="#33d17a">LIVE VERIFIED</text>
+
+      <!-- Portkey Gateway -->
+      <rect class="card ext" x="1060" y="45" width="180" height="120" rx="12"/>
+      <text class="node-icon" x="1150" y="75" text-anchor="middle">🔀</text>
+      <text class="label" x="1150" y="98" text-anchor="middle">Portkey Gateway</text>
+      <text class="sub" x="1150" y="111" text-anchor="middle">saved config pc-enterp-edad02</text>
+      <text class="sub" x="1150" y="123" text-anchor="middle">Llama 3.3 70B → fallback 3.1 8B</text>
+      <text class="sub" x="1150" y="135" text-anchor="middle">+ semantic cache + retry</text>
+      <rect class="badge-bg" x="1090" y="142" width="120" height="15" fill="#1a1030"/>
+      <text class="badge" x="1150" y="152" text-anchor="middle" fill="#c9a8ff">x-portkey-cache-status</text>
+
+      <!-- Qdrant -->
+      <rect class="card ext" x="1060" y="230" width="160" height="90" rx="12"/>
+      <text class="node-icon" x="1140" y="262" text-anchor="middle">🗄️</text>
+      <text class="label" x="1140" y="285" text-anchor="middle">Qdrant Cloud</text>
+      <text class="sub" x="1140" y="298" text-anchor="middle">AWS sa-east-1</text>
+      <text class="sub" x="1140" y="310" text-anchor="middle">vector search</text>
+
+      <!-- Response back -->
+      <rect class="card" x="210" y="420" width="150" height="90" rx="12"/>
+      <text class="node-icon" x="285" y="452" text-anchor="middle">💬</text>
+      <text class="label" x="285" y="475" text-anchor="middle">Answer</text>
+      <text class="sub" x="285" y="488" text-anchor="middle">cached or generated</text>
+      <text class="sub" x="285" y="500" text-anchor="middle">+ sources + guardrail log</text>
+
+      <!-- edges -->
+      <path class="flow-line" d="M160,300 L210,300" marker-end="url(#arrow)"/>
+      <path class="flow-line" d="M360,290 C390,220 390,140 410,110" marker-end="url(#arrow)"/>
+      <path class="flow-line" d="M560,105 L620,105" marker-end="url(#arrow)"/>
+      <path class="flow-line" d="M780,105 L840,105" marker-end="url(#arrow)"/>
+      <path class="flow-line" d="M700,170 L700,230" marker-end="url(#arrow)"/>
+      <path class="flow-line dashed" d="M780,115 C800,180 800,230 840,255" marker-end="url(#arrow)"/>
+      <path class="flow-line" d="M925,150 L925,230" marker-end="url(#arrow)"/>
+      <path class="flow-line" d="M1010,95 C1030,80 1040,80 1060,90" marker-end="url(#arrow)"/>
+      <path class="flow-line" d="M1150,165 C1150,195 1150,215 1140,230" marker-end="url(#arrow)"/>
+      <path class="flow-line dashed" d="M925,320 C700,420 500,450 360,460" marker-end="url(#arrow)"/>
+      <path class="flow-line" d="M285,510 C285,540 200,540 95,470 C60,430 90,380 95,350" marker-end="url(#arrow)"/>
+
+      <!-- moving flow dots -->
+      <circle class="flow-dot" r="4" fill="#4f8cff">
+        <animateMotion dur="2.6s" repeatCount="indefinite" path="M160,300 L210,300 C240,270 390,220 390,140 L410,110 L560,105 L620,105"/>
+      </circle>
+      <circle class="flow-dot" r="4" fill="#ffcf5c">
+        <animateMotion dur="2.2s" repeatCount="indefinite" path="M780,105 L840,105 L925,105 L925,150"/>
+      </circle>
+      <circle class="flow-dot" r="4" fill="#33d17a">
+        <animateMotion dur="2.4s" repeatCount="indefinite" path="M925,180 L925,230"/>
+      </circle>
+      <circle class="flow-dot" r="4" fill="#ff6fb0">
+        <animateMotion dur="2.8s" repeatCount="indefinite" path="M1010,95 C1030,80 1040,80 1060,90 L1150,120"/>
+      </circle>
+      <circle class="flow-dot" r="4" fill="#3ee6c5">
+        <animateMotion dur="3s" repeatCount="indefinite" path="M925,320 C700,420 500,450 360,460 L285,470"/>
+      </circle>
+
+      <!-- pulse rings on infra -->
+      <circle class="pulse-ring ring-anim" cx="925" cy="280" r="14" stroke="#33d17a" style="animation-delay:0s"/>
+      <circle class="pulse-ring ring-anim" cx="700" cy="275" r="14" stroke="#4f8cff" style="animation-delay:.7s"/>
+    </svg>
+  </div>
+
+  <!-- ================= STAGE 2: AGENT DETAIL ================= -->
+  <div class="stage" id="stage-agent">
+    <div class="panel-heading"><i class="dot live"></i> Actual compiled LangGraph (from graph.py) — richer than the original README diagram</div>
+    <svg viewBox="0 0 1360 640" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#5b6aa0"/>
+        </marker>
+      </defs>
+
+      <!-- Planner -->
+      <rect class="card" x="40" y="270" width="140" height="90" rx="12"/>
+      <text class="node-icon" x="110" y="302" text-anchor="middle">🗺️</text>
+      <text class="label" x="110" y="325" text-anchor="middle">Planner</text>
+      <text class="sub" x="110" y="338" text-anchor="middle">intent classification</text>
+
+      <!-- Clarify -->
+      <rect class="card" x="230" y="40" width="150" height="80" rx="12"/>
+      <text class="node-icon" x="305" y="70" text-anchor="middle">❓</text>
+      <text class="label" x="305" y="93" text-anchor="middle">Clarify User</text>
+      <text class="sub" x="305" y="105" text-anchor="middle">CLARIFY → END</text>
+
+      <!-- Retriever -->
+      <rect class="card" x="230" y="270" width="150" height="90" rx="12"/>
+      <text class="node-icon" x="305" y="302" text-anchor="middle">🔍</text>
+      <text class="label" x="305" y="325" text-anchor="middle">Retriever</text>
+      <text class="sub" x="305" y="338" text-anchor="middle">Qdrant + FlashRank</text>
+
+      <!-- Retrieval failure -->
+      <rect class="card" x="230" y="450" width="170" height="80" rx="12"/>
+      <text class="node-icon" x="315" y="480" text-anchor="middle">🚫</text>
+      <text class="label" x="315" y="503" text-anchor="middle">Retrieval Failure</text>
+      <text class="sub" x="315" y="515" text-anchor="middle">honest fallback → END</text>
+
+      <!-- Grade documents -->
+      <rect class="card" x="460" y="270" width="160" height="90" rx="12"/>
+      <text class="node-icon" x="540" y="302" text-anchor="middle">📊</text>
+      <text class="label" x="540" y="325" text-anchor="middle">Grade Documents</text>
+      <text class="sub" x="540" y="338" text-anchor="middle">relevance scoring</text>
+
+      <!-- Rewriter -->
+      <rect class="card" x="460" y="120" width="150" height="80" rx="12"/>
+      <text class="node-icon" x="535" y="150" text-anchor="middle">✏️</text>
+      <text class="label" x="535" y="173" text-anchor="middle">Rewriter</text>
+      <text class="sub" x="535" y="185" text-anchor="middle">rephrase query → retry</text>
+
+      <!-- Web search -->
+      <rect class="card" x="460" y="420" width="150" height="80" rx="12"/>
+      <text class="node-icon" x="535" y="450" text-anchor="middle">🌐</text>
+      <text class="label" x="535" y="473" text-anchor="middle">Web Search</text>
+      <text class="sub" x="535" y="485" text-anchor="middle">knowledge-gap fallback</text>
+
+      <!-- Context guard (Gate 3b) -->
+      <rect class="card gate" x="680" y="270" width="170" height="100" rx="12"/>
+      <text class="node-icon" x="765" y="302" text-anchor="middle">🛡️</text>
+      <text class="label" x="765" y="325" text-anchor="middle">Context Guard</text>
+      <text class="sub" x="765" y="338" text-anchor="middle">retrieval guard +</text>
+      <text class="sub" x="765" y="350" text-anchor="middle">context sanitization</text>
+
+      <!-- Responder -->
+      <rect class="card" x="920" y="270" width="150" height="90" rx="12"/>
+      <text class="node-icon" x="995" y="302" text-anchor="middle">💬</text>
+      <text class="label" x="995" y="325" text-anchor="middle">Responder</text>
+      <text class="sub" x="995" y="338" text-anchor="middle">Portkey saved config →</text>
+      <text class="sub" x="995" y="349" text-anchor="middle">Groq Llama 3.3/3.1</text>
+
+      <!-- Output guard -->
+      <rect class="card gate" x="1130" y="270" width="170" height="100" rx="12"/>
+      <text class="node-icon" x="1215" y="302" text-anchor="middle">🛡️</text>
+      <text class="label" x="1215" y="325" text-anchor="middle">Output Guard</text>
+      <text class="sub" x="1215" y="338" text-anchor="middle">PII redaction +</text>
+      <text class="sub" x="1215" y="350" text-anchor="middle">policy / toxicity check</text>
+
+      <!-- END markers -->
+      <circle cx="305" cy="150" r="18" fill="#1a2140" stroke="#5b6aa0"/>
+      <text class="sub" x="305" y="154" text-anchor="middle" font-weight="700">END</text>
+      <circle cx="315" cy="580" r="18" fill="#1a2140" stroke="#5b6aa0"/>
+      <text class="sub" x="315" y="584" text-anchor="middle" font-weight="700">END</text>
+      <circle cx="1215" cy="420" r="18" fill="#1a2140" stroke="#5b6aa0"/>
+      <text class="sub" x="1215" y="424" text-anchor="middle" font-weight="700">END</text>
+
+      <!-- Postgres checkpointer note -->
+      <rect class="card infra new" x="920" y="450" width="150" height="80" rx="12"/>
+      <text class="node-icon" x="995" y="480" text-anchor="middle">🐘</text>
+      <text class="label" x="995" y="503" text-anchor="middle">PostgresSaver</text>
+      <text class="sub" x="995" y="515" text-anchor="middle">state persists per thread_id</text>
+
+      <!-- edges -->
+      <path class="flow-line" d="M180,300 C200,250 200,150 230,120" marker-end="url(#arrow2)"/>
+      <text class="sub" x="205" y="220">CLARIFY</text>
+      <path class="flow-line" d="M180,310 L230,310" marker-end="url(#arrow2)"/>
+      <text class="sub" x="185" y="300">TECHNICAL</text>
+      <path class="flow-line" d="M180,330 C200,400 200,480 230,490" marker-end="url(#arrow2)"/>
+      <text class="sub" x="150" y="410">CONVERSATIONAL</text>
+      <path class="flow-line" d="M380,300 C400,280 420,280 460,300" marker-end="url(#arrow2)"/>
+      <path class="flow-line" d="M380,330 C400,420 400,470 460,480" marker-end="url(#arrow2)"/>
+      <text class="sub" x="380" y="410">retrieval_failed</text>
+      <path class="flow-line" d="M535,270 C520,240 520,220 500,200" marker-end="url(#arrow2)"/>
+      <text class="sub" x="480" y="235">rewrite</text>
+      <path class="flow-line dashed" d="M600,160 C650,200 650,260 620,270" marker-end="url(#arrow2)"/>
+      <text class="sub" x="600" y="220">retry loop</text>
+      <path class="flow-line" d="M535,360 C520,390 520,410 500,420" marker-end="url(#arrow2)"/>
+      <text class="sub" x="470" y="400">websearch</text>
+      <path class="flow-line" d="M610,440 C650,400 650,340 680,320" marker-end="url(#arrow2)"/>
+      <path class="flow-line" d="M620,315 L680,315" marker-end="url(#arrow2)"/>
+      <text class="sub" x="600" y="300">relevant docs</text>
+      <path class="flow-line" d="M850,315 L920,315" marker-end="url(#arrow2)"/>
+      <path class="flow-line" d="M305,120 L305,132" marker-end="url(#arrow2)"/>
+      <path class="flow-line" d="M315,500 L315,562" marker-end="url(#arrow2)"/>
+      <path class="flow-line" d="M1070,315 L1130,315" marker-end="url(#arrow2)"/>
+      <path class="flow-line" d="M1215,370 L1215,402" marker-end="url(#arrow2)"/>
+      <path class="flow-line dashed" d="M995,360 L995,450" marker-end="url(#arrow2)"/>
+
+      <!-- moving dots for main happy path -->
+      <circle class="flow-dot" r="4" fill="#4f8cff">
+        <animateMotion dur="4s" repeatCount="indefinite" path="M180,310 L230,310 L305,310 L380,300 L460,300 L540,300 L620,315 L680,315 L765,315 L850,315 L920,315 L995,315 L1070,315 L1130,315 L1215,315"/>
+      </circle>
+      <circle class="flow-dot" r="4" fill="#ffb547">
+        <animateMotion dur="3.4s" repeatCount="indefinite" path="M535,270 C520,240 500,210 500,190 L500,180 C520,180 590,190 600,200 C630,220 640,250 620,270 L610,280"/>
+      </circle>
+    </svg>
+  </div>
+
+  <!-- ================= STAGE 3: INGESTION ================= -->
+  <div class="stage" id="stage-ingest">
+    <div class="panel-heading"><i class="dot live"></i> Verified end-to-end: file upload → Eventarc → parsed/chunked/embedded/indexed (200 OK)</div>
+    <svg viewBox="0 0 1360 460" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#5b6aa0"/>
+        </marker>
+      </defs>
+
+      <!-- GCS raw bucket -->
+      <rect class="card infra" x="30" y="180" width="160" height="100" rx="12"/>
+      <text class="node-icon" x="110" y="212" text-anchor="middle">☁️</text>
+      <text class="label" x="110" y="235" text-anchor="middle">GCS Raw Bucket</text>
+      <text class="sub" x="110" y="248" text-anchor="middle">…-rag-raw</text>
+      <text class="sub" x="110" y="260" text-anchor="middle">object.finalized event</text>
+
+      <!-- Eventarc -->
+      <rect class="card new" x="250" y="180" width="160" height="100" rx="12"/>
+      <text class="node-icon" x="330" y="212" text-anchor="middle">📡</text>
+      <text class="label" x="330" y="235" text-anchor="middle">Eventarc Trigger</text>
+      <text class="sub" x="330" y="248" text-anchor="middle">rag-ingestion-trigger</text>
+      <rect class="badge-bg" x="285" y="256" width="90" height="15" fill="#0f2f1f"/>
+      <text class="badge" x="330" y="266" text-anchor="middle" fill="#33d17a">VERIFIED 200 OK</text>
+
+      <!-- Ingestion service -->
+      <rect class="card new" x="470" y="150" width="180" height="160" rx="12"/>
+      <text class="node-icon" x="560" y="182" text-anchor="middle">⚙️</text>
+      <text class="label" x="560" y="205" text-anchor="middle">rag-ingestion</text>
+      <text class="sub" x="560" y="218" text-anchor="middle">FastAPI · POST /ingest</text>
+      <text class="sub" x="560" y="234" text-anchor="middle">1. download from GCS</text>
+      <text class="sub" x="560" y="248" text-anchor="middle">2. parse + chunk</text>
+      <text class="sub" x="560" y="262" text-anchor="middle">3. upload processed JSON</text>
+      <text class="sub" x="560" y="276" text-anchor="middle">4. embed + index</text>
+      <rect class="badge-bg" x="500" y="284" width="120" height="15" fill="#0f2f1f"/>
+      <text class="badge" x="560" y="294" text-anchor="middle" fill="#33d17a">Cloud Run · private</text>
+
+      <!-- Document AI -->
+      <rect class="card ext" x="730" y="30" width="160" height="90" rx="12"/>
+      <text class="node-icon" x="810" y="62" text-anchor="middle">📄</text>
+      <text class="label" x="810" y="85" text-anchor="middle">Document AI</text>
+      <text class="sub" x="810" y="98" text-anchor="middle">OCR / PDF parsing</text>
+
+      <!-- Processed bucket -->
+      <rect class="card infra" x="730" y="150" width="160" height="90" rx="12"/>
+      <text class="node-icon" x="810" y="182" text-anchor="middle">☁️</text>
+      <text class="label" x="810" y="205" text-anchor="middle">GCS Processed</text>
+      <text class="sub" x="810" y="218" text-anchor="middle">…-rag-processed</text>
+
+      <!-- Vertex AI Embeddings -->
+      <rect class="card ext" x="730" y="270" width="160" height="90" rx="12"/>
+      <text class="node-icon" x="810" y="302" text-anchor="middle">🧬</text>
+      <text class="label" x="810" y="325" text-anchor="middle">Vertex AI</text>
+      <text class="sub" x="810" y="338" text-anchor="middle">text-embedding-004</text>
+
+      <!-- Qdrant -->
+      <rect class="card ext" x="960" y="150" width="170" height="160" rx="12"/>
+      <text class="node-icon" x="1045" y="195" text-anchor="middle">🗄️</text>
+      <text class="label" x="1045" y="218" text-anchor="middle">Qdrant Cloud</text>
+      <text class="sub" x="1045" y="231" text-anchor="middle">AWS sa-east-1</text>
+      <text class="sub" x="1045" y="245" text-anchor="middle">vector index</text>
+      <rect class="badge-bg" x="985" y="255" width="120" height="15" fill="#0f2f1f"/>
+      <text class="badge" x="1045" y="265" text-anchor="middle" fill="#33d17a">INDEXED ✅</text>
+
+      <!-- retrieval loop back note -->
+      <rect class="card group" x="1180" y="150" width="150" height="160" rx="12"/>
+      <text class="group-title" x="1198" y="170">used by</text>
+      <text class="node-icon" x="1255" y="220" text-anchor="middle">🔍</text>
+      <text class="label" x="1255" y="245" text-anchor="middle">Retriever</text>
+      <text class="sub" x="1255" y="258" text-anchor="middle">(query flow, Gate 3)</text>
+
+      <!-- edges -->
+      <path class="flow-line" d="M190,230 L250,230" marker-end="url(#arrow3)"/>
+      <path class="flow-line" d="M410,230 L470,230" marker-end="url(#arrow3)"/>
+      <path class="flow-line" d="M650,200 C680,150 690,110 730,80" marker-end="url(#arrow3)"/>
+      <path class="flow-line" d="M650,230 L730,200" marker-end="url(#arrow3)"/>
+      <path class="flow-line" d="M650,270 C680,290 690,300 730,310" marker-end="url(#arrow3)"/>
+      <path class="flow-line" d="M890,200 L960,210" marker-end="url(#arrow3)"/>
+      <path class="flow-line" d="M890,310 C920,280 930,260 960,240" marker-end="url(#arrow3)"/>
+      <path class="flow-line dashed" d="M1130,230 L1180,230" marker-end="url(#arrow3)"/>
+
+      <!-- moving dots -->
+      <circle class="flow-dot" r="4" fill="#3ee6c5">
+        <animateMotion dur="3.6s" repeatCount="indefinite" path="M190,230 L250,230 L330,230 L410,230 L470,230 L560,230 L650,230 L730,200 L810,180 L890,200 L960,210 L1045,220"/>
+      </circle>
+      <circle class="flow-dot" r="4" fill="#ff6fb0">
+        <animateMotion dur="3.2s" repeatCount="indefinite" begin="0.6s" path="M650,270 L730,310 L810,320 L890,310 L960,260 L1045,220"/>
+      </circle>
+
+      <circle class="pulse-ring ring-anim" cx="330" cy="230" r="14" stroke="#3ee6c5" style="animation-delay:0s"/>
+      <circle class="pulse-ring ring-anim" cx="1045" cy="230" r="14" stroke="#33d17a" style="animation-delay:1s"/>
+    </svg>
+  </div>
+
+  <div class="footer-note">
+    Built this session: <b>Cloud SQL Postgres 15</b> (rag-postgres/rag_memory) for persistent LangGraph memory ·
+    <b>Memorystore Redis</b> (rag-redis-cache) for the semantic cache ·
+    IAM wiring for Cloud SQL client + Eventarc invoker ·
+    deployed <b>rag-ui</b>, <b>rag-evals</b>, <b>rag-ingestion</b> Cloud Run services ·
+    created and verified the <b>Eventarc trigger</b> end-to-end ·
+    updated <b>Portkey Gateway</b> to route through the saved config <b>pc-enterp-edad02</b>
+    (bundles fallback + semantic cache + retry — replacing ad-hoc inline config, since this Portkey org
+    enforces saved-only configs) with cache status read from <b>x-portkey-cache-status</b>.<br>
+    <span class="verified">✅ Verified live:</span> PostgresSaver checkpointer active · Redis cache write + HIT confirmed ·
+    file upload → Eventarc → parse → chunk → embed → Qdrant index, all in one automated pass (200 OK).
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.stage').forEach(s => s.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('stage-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,19 +1,41 @@
 # Enterprise Agentic RAG
 
-A production-grade RAG system built with **LangGraph**, **NeMo Guardrails**, **Portkey LLM Gateway**, **RAGAS Evals**, and **Google Cloud Platform**. Deployed as four independent microservices on Cloud Run, managed entirely with Terraform.
+A production-grade RAG system built with **LangGraph**, **NeMo Guardrails**, **Portkey LLM Gateway**, **RAGAS Evals**, and **Google Cloud Platform**. Deployed as four independent microservices on Cloud Run.
+
+> 📊 **Live architecture, animated**: see [`project_flow_animated.html`](project_flow_animated.html) for an interactive, tabbed diagram of the query flow, the full LangGraph agent graph, and the event-driven ingestion pipeline — generated from the actual deployed code/infra, kept in sync as the system evolves.
 
 ---
 
 ## Key Features
 
-- **Agentic Intelligence** — LangGraph cyclic graph: Planner → Retriever → Responder with persistent memory across sessions
+- **Agentic Intelligence** — LangGraph cyclic graph: Planner → Retriever → Grade Documents → (Rewriter / Web Search) → Context Guard → Responder → Output Guard, with a Clarify escape and a Retrieval-Failure fallback, and persistent memory across sessions
 - **Four-Gate Safety** — Gate 1: NeMo Guardrails (blocks jailbreak/off-topic); Gate 2: Redis Semantic Cache (serves cached answers in ~50ms); Gate 3: Retrieval Guard + Context Sanitization (strips prompt-injection from retrieved docs, isolates untrusted context); Gate 4: Output Guard (PII redaction + policy/toxicity validation)
-- **Persistent Memory** — LangGraph `PostgresSaver` on Cloud SQL — conversation history survives container restarts and scale-to-zero
-- **LLM Gateway** — Portkey routes all LLM calls with automatic fallback (Llama 3.3 70B → Llama 3.1 8B), full dashboard visibility
+- **Persistent Memory** — LangGraph `PostgresSaver` on Cloud SQL Postgres 15 (`rag-postgres` / `rag_memory`) — conversation history survives container restarts and scale-to-zero; falls back to in-process `MemorySaver` automatically if the pool is unavailable
+- **LLM Gateway** — Portkey routes all LLM calls through a **saved gateway config** (`pc-enterp-edad02` — this Portkey org enforces saved-only configs) bundling automatic fallback (Llama 3.3 70B → Llama 3.1 8B), semantic caching, and retries, with cache status readable via the `x-portkey-cache-status` response header
 - **Enterprise Search** — Qdrant Cloud vector search + FlashRank local reranker
-- **Event-Driven Ingestion** — Upload a file to GCS → Eventarc fires → Ingestion service auto-parses, embeds, and indexes. No manual steps.
+- **Event-Driven Ingestion** — Upload a file to GCS → Eventarc fires → Ingestion service auto-parses, embeds, and indexes. No manual steps. Verified end-to-end.
 - **Evaluation Suite** — RAGAS (5 metrics) + Jaccard Tool Correctness. GCS-persisted history. Deployed as its own Cloud Run service.
 - **Full Observability** — Pydantic Logfire + LangSmith traces across every agent node and eval run
+
+---
+
+## Deployment Status (current)
+
+| Service | Cloud Run | Access | Notes |
+|---|---|---|---|
+| `rag-api` | ✅ live | authenticated (IAM) | backend + LangGraph agent; Postgres + Redis wired and verified |
+| `rag-ui` | ✅ live | authenticated (IAM) | Streamlit chat UI; org policy blocks public `allUsers` binding — use `gcloud run services proxy rag-ui --region=us-central1` for local access |
+| `rag-evals` | ✅ live | authenticated (IAM) | eval dashboard, kept internal by design |
+| `rag-ingestion` | ✅ live | authenticated (IAM) | Eventarc-triggered webhook only, not meant to be called directly |
+
+| Infra | State |
+|---|---|
+| Cloud SQL Postgres 15 (`rag-postgres`) | ✅ `RUNNABLE` — connected from Cloud Run via `/cloudsql/...` unix socket |
+| Memorystore Redis (`rag-redis-cache`) | ✅ `READY` — private IP, reached via Direct VPC Egress on `rag-vpc` |
+| Eventarc trigger (`rag-ingestion-trigger`) | ✅ verified — GCS upload → parse → chunk → embed → Qdrant index, confirmed live |
+| Portkey saved config (`pc-enterp-edad02`) | ✅ in use — fallback + semantic cache + retry bundled server-side |
+
+*(This table reflects infrastructure provisioned via direct `gcloud` calls this session — not yet reflected in the Terraform state below. See [Known Gotchas](DOCS/12_KNOWN_GOTCHAS.md) if reconciling.)*
 
 ---
 
@@ -40,43 +62,48 @@ graph TD
 
 ### Scalable Enterprise (v2 — current)
 
-Four independent microservices, event-driven ingestion, persistent memory, semantic caching, and full IaC via Terraform.
+Four independent microservices, event-driven ingestion, persistent memory, semantic caching. Live infra was provisioned directly via `gcloud` this session; Terraform definitions exist in `terraform/` but reconciliation with live state is pending.
 
 ```mermaid
 graph TB
     subgraph UI ["Interface Layer"]
-        CHAT["Streamlit Chat UI\n(Cloud Run — Public)"]
-        EAPP["Streamlit Eval App\n(Cloud Run — Public)"]
+        CHAT["Streamlit Chat UI\n(Cloud Run — IAM-authenticated)"]
+        EAPP["Streamlit Eval App\n(Cloud Run — IAM-authenticated)"]
     end
 
-    subgraph BACKEND ["Backend API — Cloud Run (Public)"]
+    subgraph BACKEND ["Backend API — Cloud Run (IAM-authenticated)"]
         API["⚡ FastAPI /query"]
         G1{"🛡️ Gate 1\nNeMo Guardrails"}
         G2{"⚡ Gate 2\nRedis Semantic Cache\n~50ms HIT"}
-        subgraph AGENT ["LangGraph Agent"]
+        subgraph AGENT ["LangGraph Agent (Gate 3)"]
             PL["🗺️ Planner"]
+            CL["❓ Clarify → END"]
             RT["🔍 Retriever"]
-            CG{"🛡️ Gate 3\nRetrieval Guard +\nContext Sanitization"}
+            RF["🚫 Retrieval Failure → END"]
+            GD["📊 Grade Documents"]
+            RW["✏️ Rewriter"]
+            WS["🌐 Web Search"]
+            CG{"🛡️ Context Guard\nsanitization"}
             RS["💬 Responder"]
             OG{"🛡️ Gate 4\nOutput Guard\nPII + Policy"}
         end
-        MEM[("💾 PostgresSaver\nCloud SQL Postgres 15\npersists across restarts")]
+        MEM[("💾 PostgresSaver\nCloud SQL Postgres 15\nunix socket, persists across restarts")]
     end
 
-    subgraph INGEST ["Ingestion — Cloud Run (Internal)"]
+    subgraph INGEST ["Ingestion — Cloud Run (IAM-authenticated, Eventarc target)"]
         EA["📡 Eventarc\nobject.finalized"]
         SVC["Ingestion Service\nPOST /ingest"]
         DOCAI["Google Document AI"]
         VEMB["Vertex AI\ntext-embedding-004"]
     end
 
-    subgraph EVALS ["Evals — Cloud Run (Public)"]
+    subgraph EVALS ["Evals — Cloud Run (IAM-authenticated)"]
         RAGAS["RAGAS Metrics\n5 experiments"]
         TC["Tool Correctness\nJaccard"]
         HIST[("💾 GCS\nEval History")]
     end
 
-    subgraph GCP ["GCP Private Network"]
+    subgraph GCP ["GCP Private Network (rag-vpc, Direct VPC Egress)"]
         REDIS[("🔴 Redis Memorystore\nprivate IP — semantic cache")]
         SQL[("🐘 Cloud SQL\nunix socket")]
         QD[("🗄️ Qdrant Cloud\nVector DB")]
@@ -85,7 +112,7 @@ graph TB
     end
 
     subgraph GATEWAY ["LLM Gateway"]
-        PK["🔀 Portkey"]
+        PK["🔀 Portkey\nsaved config pc-enterp-edad02\nfallback + cache + retry"]
         LLM1["Groq Llama 3.3 70B"]
         LLM2["Groq Fallback 8B"]
     end
@@ -95,8 +122,16 @@ graph TB
     API --> G1 --> G2
     G2 -->|HIT| CHAT
     G2 -->|MISS| PL
-    PL --> RT --> QD --> RT
-    RT --> CG --> RS --> OG --> PK --> LLM1
+    PL -->|CLARIFY| CL
+    PL -->|CONVERSATIONAL| RS
+    PL -->|TECHNICAL| RT
+    RT -->|ok| GD
+    RT -->|failed| RF
+    RT --> QD --> RT
+    GD -->|rewrite| RW --> RT
+    GD -->|websearch| WS --> CG
+    GD -->|relevant| CG
+    CG --> RS --> OG --> PK --> LLM1
     PK -.->|fallback| LLM2
     OG --> MEM --> PL
     OG -->|cache| G2
@@ -129,7 +164,7 @@ graph TB
 │   │       ├── output_guard.py   # Gate 4: output PII redaction + policy/toxicity check
 │   │       └── responder.py      # Answer generation node
 │   ├── gateway/
-│   │   └── client.py             # Portkey LLM gateway — primary + fallback routing
+│   │   └── client.py             # Portkey LLM gateway — saved config (pc-enterp-edad02): fallback + cache + retry
 │   ├── guardrails/
 │   │   ├── rails.py              # NeMo Guardrails integration
 │   │   └── colang_rules.py       # Block/allow rule definitions
@@ -204,23 +239,23 @@ graph TB
 
 | Layer | Technology |
 |-------|-----------|
-| Agent Orchestration | LangGraph (cyclic graph) |
-| LLMs | Groq Llama 3.3 70B + 3.1 8B via **Portkey** gateway |
+| Agent Orchestration | LangGraph (cyclic graph, 10 nodes incl. clarify/rewriter/web-search/retrieval-failure escapes) |
+| LLMs | Groq Llama 3.3 70B + 3.1 8B via **Portkey saved gateway config** (`pc-enterp-edad02`) |
 | Guardrails | NeMo Guardrails (Gate 1) |
-| Semantic Cache | Redis Memorystore + Vertex AI embeddings (Gate 2) |
-| Persistent Memory | LangGraph `PostgresSaver` on Cloud SQL Postgres 15 |
+| Semantic Cache | Redis Memorystore (private IP, Direct VPC Egress) + Vertex AI embeddings (Gate 2) |
+| Persistent Memory | LangGraph `PostgresSaver` on Cloud SQL Postgres 15 — unix socket, IAM `cloudsql.client` |
 | Vector DB | Qdrant Cloud |
 | Reranking | FlashRank (local, zero-latency) |
 | Embeddings | **Vertex AI text-embedding-004** |
 | Document Parsing | Google Document AI (PDF OCR) |
-| Auto-Ingestion | GCS → Eventarc → Cloud Run (internal) |
+| Auto-Ingestion | GCS → Eventarc → Cloud Run (internal, IAM `run.invoker` on the trigger's SA) |
 | Evaluation | RAGAS (5 metrics) + Jaccard Tool Correctness |
 | Eval Storage | GCS (`eval-results/` prefix, persists across restarts) |
-| Observability | Pydantic Logfire + LangSmith + Portkey Dashboard |
-| Compute | Google Cloud Run (4 independent microservices) |
-| IaC | Terraform (VPC, Cloud SQL, Redis, Eventarc, Cloud Run) |
+| Observability | Pydantic Logfire + LangSmith + Portkey Dashboard (`x-portkey-cache-status` header) |
+| Compute | Google Cloud Run (4 independent microservices, all IAM-authenticated) |
+| IaC | Terraform definitions exist (see `terraform/`); current live infra was provisioned directly via `gcloud` this session — reconciliation pending |
 | CI/CD | Google Cloud Build (parallel 4-image build) |
-| Networking | Direct VPC Egress (no connector) |
+| Networking | Direct VPC Egress on `rag-vpc` (no VPC connector — one was provisioned then removed as redundant) |
 
 ---
 
