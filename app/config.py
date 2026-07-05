@@ -24,10 +24,23 @@ class Settings:
     GROQ_MODEL = "llama-3.3-70b-versatile"
 
     # --- LLM Gateway (Portkey) ---
+    # All LLM calls route THROUGH Portkey so they get caching, automatic
+    # fallback, retries, and full dashboard observability. Without this the
+    # Portkey cache can never hit because requests never reach the gateway.
     PORTKEY_API_KEY = os.getenv("PORTKEY_API_KEY")
-    PORTKEY_CONFIG_ID = os.getenv("PORTKEY_CONFIG_ID")
-    GROQ_SLUG = "rag"     # primary virtual key: @rag/llama-3.3-70b-versatile
-    GROQ_SLUG_2 = "brag"  # fallback virtual key: @brag/llama-3.1-8b-instant
+    # This Portkey org enforces "saved-only" configs (block_inline_config), so
+    # the app must reference a saved config by its pc- slug instead of passing
+    # an inline config dict. This saved config holds cache + fallback + retry
+    # + targets. Override via env if you point at a different saved config.
+    PORTKEY_CONFIG_ID = os.getenv("PORTKEY_CONFIG_ID", "pc-enterp-edad02")
+    # Dashboard integration slugs for the two Groq API keys.
+    #   GROQ_SLUG   -> primary  (e.g. "rag")
+    #   GROQ_SLUG_2 -> fallback (e.g. "fallback-rag")
+    GROQ_SLUG = os.getenv("GROQ_SLUG", "rag")
+    GROQ_SLUG_2 = os.getenv("GROQ_SLUG_2", "fallback-rag")
+    # Fully-qualified Portkey model references: @<slug>/<model-name>
+    PORTKEY_PRIMARY_MODEL = f"@{GROQ_SLUG}/llama-3.3-70b-versatile"
+    PORTKEY_FALLBACK_MODEL = f"@{GROQ_SLUG_2}/llama-3.1-8b-instant"
 
     # --- Guardrails (NVIDIA) ---
     NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
@@ -51,7 +64,7 @@ class Settings:
     LANGSMITH_ENDPOINT = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
 
     # --- Evals ---
-    JUDGE_GROQ = os.getenv("JUDGE_GROQ")
+    JUDGE_GROQ_API = os.getenv("JUDGE_GROQ_API")
 
 
 # Apply LangSmith env vars for automatic LangChain tracing

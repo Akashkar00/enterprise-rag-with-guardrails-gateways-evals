@@ -12,6 +12,36 @@ env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")
 load_dotenv(dotenv_path=env_path)
 
 
+def get_auth_headers(url: str):
+    """
+    Fetches the OIDC identity token if calling a Cloud Run URL.
+    Attempts using google-auth library first, and falls back to gcloud CLI.
+    """
+    headers = {"Content-Type": "application/json"}
+    if "run.app" in url:
+        try:
+            import google.auth
+            import google.auth.transport.requests
+            import google.oauth2.id_token
+            
+            # Extract audience from URL
+            audience = url.split("/query")[0]
+            auth_req = google.auth.transport.requests.Request()
+            token = google.oauth2.id_token.fetch_id_token(auth_req, audience)
+            headers["Authorization"] = f"Bearer {token}"
+            print("Successfully retrieved ID token via google-auth library.")
+        except Exception as e:
+            try:
+                import subprocess
+                token = subprocess.check_output(["gcloud", "auth", "print-identity-token"], text=True).strip()
+                headers["Authorization"] = f"Bearer {token}"
+                print("Successfully retrieved ID token via gcloud CLI fallback.")
+            except Exception as cmd_e:
+                print(f"Auth token fetch failed. Run requires authentication: {e} | {cmd_e}")
+    return headers
+
+
+
 # Initialize Logfire
 try:
     token = os.getenv("LOGFIRE_TOKEN")
@@ -89,7 +119,8 @@ if prompt := st.chat_input("Ask about your documentation..."):
                         base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
                         url = f"{base_url}/query"
                         payload = {"q": prompt, "thread_id": st.session_state.session_id}
-                        response = requests.post(url, json=payload, timeout=60)
+                        headers = get_auth_headers(url)
+                        response = requests.post(url, json=payload, headers=headers, timeout=180)
                         data = response.json()
                     
                     # Show Reasoning Steps from Backend

@@ -1,15 +1,13 @@
 import logfire
 from app.agents.state import AgentState
-from app.gateway import get_langchain_llm
-
-llm = get_langchain_llm(feature="responder")
+from app.gateway import portkey_client, extract_cache_status
 
 
 def generate_node(state: AgentState):
     """
     Synthesizes a response using both Documentation Context AND Conversation History.
-    Uses a direct ChatGroq client (Portkey gateway removed) with a manual
-    fallback model configured in app.gateway.client.
+    Uses a Groq LLM via an OpenAI-compatible ChatOpenAI client with an explicit
+    fallback model, configured in app.gateway.client.
     """
     query = state["current_query"]
 
@@ -84,11 +82,24 @@ def generate_node(state: AgentState):
 
     with logfire.span("✍️ LLM Synthesis"):
         try:
-            response = llm.invoke(prompt)
-            content = response.content
+            # Route through the Portkey gateway (native client) so we can read
+            # the cache-status header and get caching + fallback + retries.
+            response = portkey_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+            )
+            content = response.choices[0].message.content
 
-            logfire.info("✅ Response synthesised via LLM.")
-            plan_update = state["plan"]
+            cache_status = extract_cache_status(response)
+            is_cache_hit = cache_status == "HIT"
+
+            plan_update = list(state["plan"])
+            if is_cache_hit:
+                logfire.info("⚡ Gateway Cache Hit")
+                plan_update.append("Cache: Hit ⚡")
+            else:
+                logfire.info("✅ Response synthesised via LLM.")
+
             status = "Response generated."
 
             return {

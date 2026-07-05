@@ -20,6 +20,7 @@ env/
 genv/
 enterprise_env/
 tenvv/
+advned_rag_project/
 
 # Secrets
 .env

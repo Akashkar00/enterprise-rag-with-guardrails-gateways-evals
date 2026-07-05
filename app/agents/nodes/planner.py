@@ -2,7 +2,8 @@ from app.agents.state import AgentState
 from app.gateway import get_langchain_llm
 import logfire
 
-# Portkey-backed LLM: fallback + cache + retry — same .invoke() interface as ChatGroq
+# Groq LLM via OpenAI-compatible client (ChatOpenAI): primary + retry, with an
+# explicit fallback to a smaller model. Exposes the same .invoke() interface.
 llm = get_langchain_llm(feature="planner")
 
 def planner_node(state: AgentState):

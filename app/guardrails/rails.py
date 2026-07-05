@@ -1,8 +1,9 @@
 import logfire
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from nemoguardrails import RailsConfig, LLMRails
 
 from app.config import settings
+from app.gateway.client import GROQ_OPENAI_BASE_URL
 from app.guardrails.colang_rules import COLANG_CONTENT, YAML_CONTENT, RAIL_INDICATORS
 
 
@@ -14,11 +15,15 @@ def initialize_rails() -> None:
     Build the NeMo LLMRails singleton at app startup.
     Uses llama-3.1-8b-instant for fast intent classification at the gate —
     the heavier llama-3.3-70b-versatile is reserved for the RAG pipeline.
+
+    Driven through ChatOpenAI against Groq's OpenAI-compatible endpoint, matching
+    the rest of the app's LLM layer (app.gateway.client).
     """
     global _rails
 
-    guard_llm = ChatGroq(
+    guard_llm = ChatOpenAI(
         api_key=settings.GROQ_API_KEY,
+        base_url=GROQ_OPENAI_BASE_URL,
         model="llama-3.1-8b-instant",
         temperature=0
     )
