@@ -32,11 +32,19 @@ def get_db_pool():
 
         # Unix socket path (Cloud Run): /cloudsql/project:region:instance
         # TCP host (local dev): localhost or IP address
-        conninfo = (
-            f"host={db_host} dbname={db_name} user={db_user} password={db_pass}"
+        _pool = ConnectionPool(
+            conninfo="",
+            min_size=1,
+            max_size=5,
+            open=True,
+            kwargs={
+                "autocommit": True,
+                "host": db_host,
+                "dbname": db_name,
+                "user": db_user,
+                "password": db_pass,
+            },
         )
-
-        _pool = ConnectionPool(conninfo, min_size=1, max_size=5, open=True)
         logfire.info("✅ Postgres connection pool initialized")
         return _pool
 

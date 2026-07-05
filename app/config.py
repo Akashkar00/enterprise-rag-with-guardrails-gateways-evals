@@ -6,12 +6,12 @@ load_dotenv()
 
 class Settings:
     # --- GCP Core ---
-    PROJECT_ID = os.getenv("PROJECT_ID", "dmtxpresss")
+    PROJECT_ID = os.getenv("PROJECT_ID", "advanced-rag-project-500909")
     LOCATION = os.getenv("LOCATION", "us-central1")
     GCP_DOC_AI_LOCATION = os.getenv("GCP_DOC_AI_LOCATION", "us")
     GCP_DOC_AI_PROCESSOR_ID = os.getenv("GCP_DOC_AI_PROCESSOR_ID")
-    RAW_BUCKET = os.getenv("GCP_RAW_BUCKET", "dmtxpresss-rag-raw")
-    PROCESSED_BUCKET = os.getenv("GCP_PROCESSED_BUCKET", "dmtxpresss-rag-processed")
+    RAW_BUCKET = os.getenv("GCP_RAW_BUCKET", "advanced-rag-project-500909-rag-raw")
+    PROCESSED_BUCKET = os.getenv("GCP_PROCESSED_BUCKET", "advanced-rag-project-500909-rag-processed")
 
     # --- Vector DB (Qdrant) ---
     QDRANT_URL = os.getenv("QDRANT_CLUSTER_ENDPOINT")
