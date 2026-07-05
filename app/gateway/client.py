@@ -6,11 +6,6 @@ from langchain_core.runnables import Runnable
 from app.config import settings
 
 
-# Groq's OpenAI-compatible endpoint. The NeMo Guardrails classifier
-# (app/guardrails/rails.py) calls Groq directly through this URL — it's a fast
-# gate-keeping model that doesn't need gateway caching/fallback.
-GROQ_OPENAI_BASE_URL = "https://api.groq.com/openai/v1"
-
 
 # ---------------------------------------------------------------------------
 # Portkey LLM Gateway

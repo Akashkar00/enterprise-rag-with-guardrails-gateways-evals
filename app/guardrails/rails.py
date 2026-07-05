@@ -1,9 +1,9 @@
 import logfire
 from langchain_openai import ChatOpenAI
+from portkey_ai import createHeaders, PORTKEY_GATEWAY_URL
 from nemoguardrails import RailsConfig, LLMRails
 
 from app.config import settings
-from app.gateway.client import GROQ_OPENAI_BASE_URL
 from app.guardrails.colang_rules import COLANG_CONTENT, YAML_CONTENT, RAIL_INDICATORS
 
 
@@ -16,16 +16,22 @@ def initialize_rails() -> None:
     Uses llama-3.1-8b-instant for fast intent classification at the gate —
     the heavier llama-3.3-70b-versatile is reserved for the RAG pipeline.
 
-    Driven through ChatOpenAI against Groq's OpenAI-compatible endpoint, matching
-    the rest of the app's LLM layer (app.gateway.client).
+    Routed through Portkey (fallback-rag slug, same llama-3.1-8b-instant model)
+    so this call is observable/cached in the Portkey dashboard like every other
+    LLM call in the app, instead of hitting Groq directly.
     """
     global _rails
 
     guard_llm = ChatOpenAI(
-        api_key=settings.GROQ_API_KEY,
-        base_url=GROQ_OPENAI_BASE_URL,
-        model="llama-3.1-8b-instant",
-        temperature=0
+        api_key=settings.PORTKEY_API_KEY,
+        base_url=PORTKEY_GATEWAY_URL,
+        model=settings.PORTKEY_FALLBACK_MODEL,
+        temperature=0,
+        default_headers=createHeaders(
+            api_key=settings.PORTKEY_API_KEY,
+            config=settings.PORTKEY_CONFIG_ID,
+            metadata={"feature": "guardrails"},
+        ),
     )
 
     config = RailsConfig.from_content(
