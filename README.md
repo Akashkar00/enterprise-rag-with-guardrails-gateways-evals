@@ -35,7 +35,7 @@ A production-grade RAG system built with **LangGraph**, **NeMo Guardrails**, **P
 | Eventarc trigger (`rag-ingestion-trigger`) | ✅ verified — GCS upload → parse → chunk → embed → Qdrant index, confirmed live |
 | Portkey saved config (`pc-enterp-edad02`) | ✅ in use — fallback + semantic cache + retry bundled server-side |
 
-*(This table reflects infrastructure provisioned via direct `gcloud` calls this session — not yet reflected in the Terraform state below. See [Known Gotchas](DOCS/12_KNOWN_GOTCHAS.md) if reconciling.)*
+*(This table reflects infrastructure provisioned via direct `gcloud` calls this session.)*
 
 ---
 
@@ -62,7 +62,7 @@ graph TD
 
 ### Scalable Enterprise (v2 — current)
 
-Four independent microservices, event-driven ingestion, persistent memory, semantic caching. Live infra was provisioned directly via `gcloud` this session; Terraform definitions exist in `terraform/` but reconciliation with live state is pending.
+Four independent microservices, event-driven ingestion, persistent memory, semantic caching. Live infra was provisioned directly via `gcloud` this session.
 
 ```mermaid
 graph TB
@@ -206,15 +206,6 @@ graph TB
 │   ├── ingestion.Dockerfile      # DocAI + Qdrant + parsers
 │   └── evals.Dockerfile          # RAGAS + Vertex AI + Streamlit
 │
-├── terraform/
-│   ├── main.tf                   # VPC, GCS buckets, Redis, Eventarc SA IAM
-│   ├── cloud_run.tf              # All 4 Cloud Run services + public IAM
-│   ├── database.tf               # Cloud SQL Postgres 15
-│   ├── ingestion.tf              # Ingestion service + Eventarc trigger (POST /ingest)
-│   ├── variables.tf              # Input variable declarations
-│   ├── provider.tf               # GCP + hashicorp/time providers
-│   └── output.tf                 # backend_url, ui_url, evals_url, ingestion_url
-│
 ├── notebooks/
 │   ├── 01_guardrails.ipynb       # NeMo Guardrails walkthrough
 │   ├── 02_llm_gateway.ipynb      # Portkey gateway exploration
@@ -253,7 +244,7 @@ graph TB
 | Eval Storage | GCS (`eval-results/` prefix, persists across restarts) |
 | Observability | Pydantic Logfire + LangSmith + Portkey Dashboard (`x-portkey-cache-status` header) |
 | Compute | Google Cloud Run (4 independent microservices, all IAM-authenticated) |
-| IaC | Terraform definitions exist (see `terraform/`); current live infra was provisioned directly via `gcloud` this session — reconciliation pending |
+| Provisioning | Direct `gcloud` CLI (Cloud Run, Cloud SQL, Redis, Eventarc, VPC) |
 | CI/CD | Google Cloud Build (parallel 4-image build) |
 | Networking | Direct VPC Egress on `rag-vpc` (no VPC connector — one was provisioned then removed as redundant) |
 
@@ -290,14 +281,11 @@ streamlit run evals/app.py
 See [commands_scalable.md](commands_scalable.md) for the full step-by-step. High level:
 
 ```bash
-# 1. Create AR repo first
-cd terraform && terraform apply -target=google_artifact_registry_repository.repo
+# 1. Build all 4 Docker images in parallel
+gcloud builds submit --config cloudbuild.yaml --project=YOUR_PROJECT .
 
-# 2. Build all 4 Docker images in parallel
-cd .. && gcloud builds submit --config cloudbuild.yaml --project=YOUR_PROJECT .
-
-# 3. Deploy everything
-cd terraform && terraform apply
+# 2. Deploy each service to Cloud Run with `gcloud run deploy`
+#    (rag-api, rag-ui, rag-ingestion, rag-evals) — see commands_scalable.md for exact flags
 ```
 
 Outputs: `backend_url`, `ui_url`, `evals_url`, `ingestion_url`
@@ -319,7 +307,7 @@ Outputs: `backend_url`, `ui_url`, `evals_url`, `ingestion_url`
 | 9 | [Infra Architecture](DOCS/09_INFRA_ARCHITECTURE.md) | The 3-tier cloud blueprint |
 | 10 | [Redis Caching](DOCS/10_REDIS_CACHING.md) | Semantic cache — cosine distance, Gate 2 design |
 | 11 | [Microservices Transition](DOCS/11_MICROSERVICES_TRANSITION.md) | Scaling beyond monolith |
-| 12 | [Known Gotchas](DOCS/12_KNOWN_GOTCHAS.md) | GCP quirks — Eventarc SA, HCL syntax, tfvars secrets |
+| 12 | [Known Gotchas](DOCS/12_KNOWN_GOTCHAS.md) | GCP quirks — Eventarc SA, deployment secrets |
 | 13 | [FlashRank Reranking](DOCS/13_FLASHRANK_RERANKING.md) | Local semantic reranker deep-dive |
 | 14 | [VPC Networking](DOCS/14_VPC_NETWORKING.md) | Direct VPC egress — Cloud SQL unix socket |
 | 15 | [Guardrails](DOCS/15_GUARDRAILS.md) | NeMo Guardrails implementation |
@@ -331,7 +319,6 @@ Outputs: `backend_url`, `ui_url`, `evals_url`, `ingestion_url`
 | 21 | [Eventarc Ingestion](DOCS/21_STEP_3_EVENTARC_INGESTION.md) | Event-driven ingestion — feedback loop fix, IAM |
 | 22 | [Semantic Cache](DOCS/22_STEP_4_SEMANTIC_CACHE.md) | Redis semantic cache — threshold tuning, business impact |
 | 23 | [Microservices & Docker](DOCS/23_MICROSERVICES_AND_CONTAINERIZATION.md) | 4 Dockerfiles, split requirements, layer caching |
-| 24 | [Terraform IaC](DOCS/24_INFRASTRUCTURE_AS_CODE_TERRAFORM.md) | Full Terraform reference — deployment order, gotchas |
 
 ---
 

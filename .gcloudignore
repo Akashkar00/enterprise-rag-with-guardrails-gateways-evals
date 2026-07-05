@@ -41,9 +41,6 @@ advned_rag_project/
 # Data — lives in GCS, not needed for builds
 DATA/
 
-# Terraform — IaC only, run locally; tfvars contains secrets
-terraform/
-
 # Docs & planning files — not needed for builds
 notebooks/
 DOCS/

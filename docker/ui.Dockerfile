@@ -18,5 +18,5 @@ ENV PORT=8501
 
 EXPOSE 8501
 
-# Cloud Run routes to port 8501 (set via container_port in cloud_run.tf)
+# Cloud Run routes to port 8501 (set via --port on gcloud run deploy)
 CMD ["streamlit", "run", "ui/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

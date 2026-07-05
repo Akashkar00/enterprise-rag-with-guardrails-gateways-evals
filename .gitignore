@@ -60,8 +60,3 @@ tenvv
 
 commands_scalable.md
 
-# Terraform — secrets and generated state
-terraform/terraform.tfvars
-terraform/.terraform/
-terraform/terraform.tfstate
-terraform/terraform.tfstate.backup

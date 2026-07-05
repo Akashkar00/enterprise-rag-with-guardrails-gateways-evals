@@ -225,7 +225,6 @@ graph TB
         VPC["Direct VPC Egress\nno connector needed"]
         REDIS[("🔴 Redis Memorystore\n10.x.x.x private IP")]
         SQL[("🐘 Cloud SQL Postgres 15\nunix socket /cloudsql/...")]
-        TF["Terraform\nAll infra as code"]
     end
 
     %% ── Query Flow ───────────────────────────────────────────────────────────
@@ -271,7 +270,6 @@ graph TB
     PK -.->|"LLM calls"| PK2
 
     %% ── Infra ────────────────────────────────────────────────────────────────
-    TF --> CR
     CB --> AR --> CR
     CR --- VPC
     VPC --- REDIS
@@ -295,7 +293,7 @@ graph TB
     class UPLOAD,GCS1,EA,SVC,DOCAI,EMB,GCS2 ingest
     class GD,RAGAS,TC,JG,HIST evals
     class LF,LS,PK2 obs
-    class CR,CB,AR,VPC,REDIS,SQL,TF infra
+    class CR,CB,AR,VPC,REDIS,SQL infra
     class MEM memory
 ```
 
@@ -313,7 +311,7 @@ graph TB
     F["📥 6. Auto-Ingestion\nEventarc → Cloud Run (internal)\nDoc AI · Vertex AI Embeddings"]
     G["🧪 7. RAGAS Evals\n5 metrics + Tool Correctness (Jaccard)\n💾 GCS history persistence"]
     H["📡 8. Monitoring\nLogfire · LangSmith · Portkey Dashboard"]
-    I["☁️ 9. GCP Infra\nTerraform · Cloud Run (4 services)\nCloud SQL · Redis · Direct VPC Egress"]
+    I["☁️ 9. GCP Infra\nCloud Run (4 services)\nCloud SQL · Redis · Direct VPC Egress"]
 
     A --> B --> C
     C --> D --> C
