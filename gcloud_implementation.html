@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>How I Implemented Google Cloud — Enterprise RAG</title>
+<style>
+  /* ─────────────────────────────────────────────  DESIGN TOKENS  */
+  :root{
+    --bg:#070b16;
+    --bg2:#0b1222;
+    --panel:rgba(255,255,255,.04);
+    --panel-2:rgba(255,255,255,.06);
+    --stroke:rgba(255,255,255,.10);
+    --text:#e8edf7;
+    --muted:#9aa7bd;
+    --g-blue:#4285F4;
+    --g-red:#EA4335;
+    --g-yellow:#FBBC05;
+    --g-green:#34A853;
+    --accent:#7cc4ff;
+    --radius:18px;
+    --mono:"SF Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:var(--sans);
+    background:
+      radial-gradient(900px 600px at 12% -8%, rgba(66,133,244,.20), transparent 60%),
+      radial-gradient(800px 600px at 92% 4%, rgba(234,67,53,.14), transparent 55%),
+      radial-gradient(900px 700px at 50% 110%, rgba(52,168,83,.14), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    line-height:1.65;
+    overflow-x:hidden;
+  }
+  a{color:var(--accent);text-decoration:none}
+
+  /* ─────────────────────────────────────────────  FLOATING BG DOTS  */
+  .field{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .field span{
+    position:absolute;display:block;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, rgba(124,196,255,.9), rgba(124,196,255,0));
+    opacity:.35;animation:rise linear infinite;
+  }
+  @keyframes rise{
+    0%{transform:translateY(20vh) scale(.4);opacity:0}
+    10%{opacity:.5}
+    90%{opacity:.3}
+    100%{transform:translateY(-110vh) scale(1);opacity:0}
+  }
+
+  /* ─────────────────────────────────────────────  LAYOUT  */
+  .wrap{position:relative;z-index:2;max-width:1120px;margin:0 auto;padding:0 22px}
+  section{padding:64px 0}
+
+  /* ─────────────────────────────────────────────  HERO  */
+  header.hero{
+    min-height:92vh;display:flex;flex-direction:column;justify-content:center;
+    align-items:center;text-align:center;position:relative;z-index:2;padding:40px 22px;
+  }
+  .badge{
+    display:inline-flex;align-items:center;gap:9px;padding:8px 16px;border-radius:999px;
+    background:var(--panel);border:1px solid var(--stroke);color:var(--muted);
+    font-size:13px;letter-spacing:.5px;text-transform:uppercase;
+    backdrop-filter:blur(8px);animation:fadeDown .8s both;
+  }
+  .g-dots{display:inline-flex;gap:4px}
+  .g-dots i{width:8px;height:8px;border-radius:50%;display:block}
+  .g-dots i:nth-child(1){background:var(--g-blue)}
+  .g-dots i:nth-child(2){background:var(--g-red)}
+  .g-dots i:nth-child(3){background:var(--g-yellow)}
+  .g-dots i:nth-child(4){background:var(--g-green)}
+  h1.title{
+    font-size:clamp(34px,6vw,68px);line-height:1.05;margin:22px 0 8px;font-weight:800;
+    letter-spacing:-1.5px;animation:fadeUp .9s .1s both;
+  }
+  h1.title .grad{
+    background:linear-gradient(100deg,var(--g-blue),var(--g-green) 45%,var(--g-yellow) 70%,var(--g-red));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .sub{max-width:720px;color:var(--muted);font-size:clamp(15px,2.2vw,20px);animation:fadeUp .9s .25s both}
+  .hero-stats{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:38px;animation:fadeUp .9s .4s both}
+  .stat{
+    background:var(--panel);border:1px solid var(--stroke);border-radius:14px;
+    padding:16px 22px;min-width:120px;backdrop-filter:blur(8px);
+  }
+  .stat b{display:block;font-size:26px;background:linear-gradient(120deg,#fff,var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat span{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .scroll-hint{margin-top:52px;color:var(--muted);font-size:13px;animation:bob 1.8s ease-in-out infinite}
+  .scroll-hint .arrow{display:block;margin:6px auto 0;width:20px;height:20px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg)}
+
+  /* ─────────────────────────────────────────────  SECTION HEADINGS  */
+  .eyebrow{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase}
+  h2.sec{font-size:clamp(26px,4vw,40px);font-weight:800;letter-spacing:-.8px;margin:8px 0 12px}
+  .lead{color:var(--muted);max-width:760px;font-size:16.5px}
+
+  /* ─────────────────────────────────────────────  REVEAL  */
+  .reveal{opacity:0;transform:translateY(34px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+
+  /* ─────────────────────────────────────────────  SERVICE GRID  */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:34px}
+  .card{
+    position:relative;background:var(--panel);border:1px solid var(--stroke);border-radius:var(--radius);
+    padding:22px;overflow:hidden;transition:transform .35s,border-color .35s,background .35s;
+  }
+  .card:hover{transform:translateY(-6px);border-color:rgba(124,196,255,.4);background:var(--panel-2)}
+  .card::before{
+    content:"";position:absolute;inset:0;background:linear-gradient(130deg,transparent 40%,var(--gc,rgba(124,196,255,.14)));
+    opacity:0;transition:opacity .35s;
+  }
+  .card:hover::before{opacity:1}
+  .card .ic{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:22px;margin-bottom:14px;background:var(--gc,rgba(124,196,255,.16));border:1px solid var(--stroke)}
+  .card h3{font-size:17px;margin-bottom:6px}
+  .card p{color:var(--muted);font-size:14px}
+  .card .tag{display:inline-block;margin-top:12px;font-family:var(--mono);font-size:11.5px;color:var(--accent);background:rgba(124,196,255,.08);padding:3px 9px;border-radius:6px;border:1px solid var(--stroke)}
+
+  /* ─────────────────────────────────────────────  TIMELINE / STEPS  */
+  .timeline{position:relative;margin-top:44px;padding-left:8px}
+  .timeline::before{
+    content:"";position:absolute;left:29px;top:8px;bottom:8px;width:2px;
+    background:linear-gradient(var(--g-blue),var(--g-green),var(--g-yellow),var(--g-red));opacity:.5;
+  }
+  .step{position:relative;padding:0 0 30px 78px;}
+  .step .num{
+    position:absolute;left:0;top:0;width:60px;height:60px;border-radius:16px;display:grid;place-items:center;
+    font-weight:800;font-size:20px;color:#fff;box-shadow:0 8px 26px rgba(0,0,0,.4);z-index:2;
+    background:linear-gradient(140deg,var(--sc1,#4285F4),var(--sc2,#34A853));
+  }
+  .step .body{
+    background:var(--panel);border:1px solid var(--stroke);border-radius:var(--radius);padding:22px 24px;
+    transition:transform .35s,border-color .35s;
+  }
+  .step:hover .body{transform:translateX(6px);border-color:rgba(124,196,255,.35)}
+  .step h3{font-size:19px;margin-bottom:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .step h3 .chip{font-size:11px;font-family:var(--mono);color:var(--muted);background:var(--panel-2);border:1px solid var(--stroke);padding:2px 9px;border-radius:999px;text-transform:none;letter-spacing:0}
+  .step p{color:var(--muted);font-size:14.5px;margin:6px 0}
+  .step ul{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:14px}
+  .step ul li{margin:3px 0}
+  .step ul li b{color:var(--text);font-weight:600}
+
+  /* ─────────────────────────────────────────────  CODE BLOCKS  */
+  pre{
+    margin-top:14px;background:#05080f;border:1px solid var(--stroke);border-radius:12px;
+    padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:12.8px;line-height:1.7;color:#d6e2f5;
+    position:relative;
+  }
+  pre .cm{color:#5f7391}      /* comment */
+  pre .cmd{color:#7cc4ff}     /* gcloud / command */
+  pre .flag{color:#FBBC05}    /* --flags */
+  pre .str{color:#7ee787}     /* strings */
+  pre .kw{color:#f0883e}      /* keywords */
+  pre .copy{position:absolute;top:9px;right:10px;font-family:var(--sans);font-size:11px;color:var(--muted);background:var(--panel-2);border:1px solid var(--stroke);border-radius:7px;padding:4px 9px;cursor:pointer;transition:.2s}
+  pre .copy:hover{color:var(--text);border-color:var(--accent)}
+
+  /* ─────────────────────────────────────────────  FLOW DIAGRAM  */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;margin-top:34px;justify-content:center}
+  .fnode{
+    background:var(--panel);border:1px solid var(--stroke);border-radius:14px;padding:14px 16px;min-width:132px;max-width:170px;
+    text-align:center;position:relative;transition:.3s;
+  }
+  .fnode:hover{border-color:var(--accent);transform:translateY(-4px)}
+  .fnode .fi{font-size:22px}
+  .fnode b{display:block;font-size:13.5px;margin-top:4px}
+  .fnode small{color:var(--muted);font-size:11.5px}
+  .farrow{display:flex;align-items:center;padding:0 4px;color:var(--accent);font-size:20px;position:relative}
+  .farrow .dot{position:absolute;left:0;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:travel 2.2s linear infinite}
+  @keyframes travel{0%{left:2px;opacity:0}15%{opacity:1}85%{opacity:1}100%{left:26px;opacity:0}}
+
+  /* ─────────────────────────────────────────────  TWO-COL FLOW SECTION  */
+  .flowrap{margin-top:30px;background:var(--panel);border:1px solid var(--stroke);border-radius:var(--radius);padding:26px}
+  .flowrap h3{font-size:18px;margin-bottom:6px}
+  .flowrap p.d{color:var(--muted);font-size:14px}
+
+  /* ─────────────────────────────────────────────  IAM TABLE  */
+  .tbl{margin-top:26px;width:100%;border-collapse:collapse;font-size:14px;background:var(--panel);border-radius:var(--radius);overflow:hidden;border:1px solid var(--stroke)}
+  .tbl th,.tbl td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--stroke)}
+  .tbl th{background:var(--panel-2);font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+  .tbl tr:last-child td{border-bottom:none}
+  .tbl td code{font-family:var(--mono);font-size:12.5px;color:var(--accent)}
+  .tbl tr:hover td{background:rgba(124,196,255,.04)}
+
+  /* ─────────────────────────────────────────────  FOOTER  */
+  footer{padding:60px 22px 80px;text-align:center;color:var(--muted);border-top:1px solid var(--stroke);margin-top:40px}
+  footer b{color:var(--text)}
+
+  /* ─────────────────────────────────────────────  ANIMATIONS  */
+  @keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
+  @keyframes fadeDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:none}}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+
+  /* ─────────────────────────────────────────────  PROGRESS BAR  */
+  .progress{position:fixed;top:0;left:0;height:3px;width:0;z-index:50;
+    background:linear-gradient(90deg,var(--g-blue),var(--g-green),var(--g-yellow),var(--g-red));box-shadow:0 0 12px rgba(124,196,255,.6)}
+
+  @media(max-width:640px){
+    .step{padding-left:66px}
+    .step .num{width:50px;height:50px;font-size:17px}
+    .timeline::before{left:24px}
+    .farrow{transform:rotate(90deg);padding:6px 0}
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="prog"></div>
+<div class="field" id="field"></div>
+
+<!-- ══════════════════════════════════════════  HERO  -->
+<header class="hero">
+  <div class="badge">
+    <span class="g-dots"><i></i><i></i><i></i><i></i></span>
+    Google Cloud Platform · Implementation Walkthrough
+  </div>
+  <h1 class="title">How I Built This on<br><span class="grad">Google Cloud</span></h1>
+  <p class="sub">A step-by-step, plain-English tour of every Google Cloud service powering my
+  <b>Enterprise Agentic RAG</b> system — from a single <code>gcloud</code> login all the way to
+  four live microservices, event-driven ingestion, and private networking.</p>
+
+  <div class="hero-stats">
+    <div class="stat"><b>12+</b><span>GCP Services</span></div>
+    <div class="stat"><b>4</b><span>Cloud Run Apps</span></div>
+    <div class="stat"><b>10</b><span>Build → Deploy Steps</span></div>
+    <div class="stat"><b>2</b><span>Data Flows</span></div>
+  </div>
+
+  <div class="scroll-hint">Scroll to explore the build<span class="arrow"></span></div>
+</header>
+
+<!-- ══════════════════════════════════════════  BIG PICTURE  -->
+<section class="wrap">
+  <div class="reveal">
+    <div class="eyebrow">The Big Picture</div>
+    <h2 class="sec">What Google Cloud does in this project</h2>
+    <p class="lead">The app is a document-question-answering system. Google Cloud provides the
+    <b>compute</b> that runs it, the <b>storage</b> that holds documents, the <b>AI</b> that reads and
+    understands them, and the <b>databases + networking</b> that keep everything fast and private.
+    Every box below is a real service I enabled and wired together.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card reveal" style="--gc:rgba(66,133,244,.20)"><div class="ic">🚀</div><h3>Cloud Run</h3><p>Runs my 4 containers serverlessly — scales to zero, scales up on traffic. No servers to manage.</p><span class="tag">rag-api · ui · ingestion · evals</span></div>
+    <div class="card reveal" style="--gc:rgba(52,168,83,.20)"><div class="ic">🏗️</div><h3>Cloud Build</h3><p>Builds all 4 Docker images in the cloud in parallel and pushes them automatically.</p><span class="tag">cloudbuild.yaml</span></div>
+    <div class="card reveal" style="--gc:rgba(251,188,5,.20)"><div class="ic">📦</div><h3>Artifact Registry</h3><p>Private Docker registry that stores the built images Cloud Run pulls from.</p><span class="tag">enterprise-rag-repo</span></div>
+    <div class="card reveal" style="--gc:rgba(234,67,53,.18)"><div class="ic">☁️</div><h3>Cloud Storage</h3><p>Two buckets: raw uploads land in one, cleaned/parsed text lands in the other.</p><span class="tag">raw + processed</span></div>
+    <div class="card reveal" style="--gc:rgba(66,133,244,.20)"><div class="ic">📋</div><h3>Document AI</h3><p>OCR + layout parsing turns messy PDFs into clean text I can index.</p><span class="tag">processor: ca02c6f7e3…</span></div>
+    <div class="card reveal" style="--gc:rgba(52,168,83,.20)"><div class="ic">🔢</div><h3>Vertex AI</h3><p><code>text-embedding-004</code> converts text + queries into vectors for semantic search.</p><span class="tag">embeddings</span></div>
+    <div class="card reveal" style="--gc:rgba(124,196,255,.20)"><div class="ic">🐘</div><h3>Cloud SQL</h3><p>Postgres 15 stores the agent's conversation memory so it survives restarts.</p><span class="tag">rag_memory · Postgres 15</span></div>
+    <div class="card reveal" style="--gc:rgba(234,67,53,.18)"><div class="ic">🔴</div><h3>Memorystore Redis</h3><p>Semantic cache — repeated questions return in ~50 ms instead of re-running the pipeline.</p><span class="tag">private IP</span></div>
+    <div class="card reveal" style="--gc:rgba(99,102,241,.22)"><div class="ic">📡</div><h3>Eventarc</h3><p>Fires the instant a file lands in the bucket, auto-triggering ingestion. No manual steps.</p><span class="tag">object.finalized</span></div>
+    <div class="card reveal" style="--gc:rgba(251,188,5,.18)"><div class="ic">🔌</div><h3>VPC / Direct Egress</h3><p>Private network so Cloud Run reaches Redis + Cloud SQL over internal IPs, not the public internet.</p><span class="tag">rag-vpc</span></div>
+    <div class="card reveal" style="--gc:rgba(52,168,83,.18)"><div class="ic">🔐</div><h3>IAM</h3><p>Roles + service accounts grant each piece exactly the permissions it needs — least privilege.</p><span class="tag">roles &amp; service accounts</span></div>
+    <div class="card reveal" style="--gc:rgba(66,133,244,.18)"><div class="ic">📨</div><h3>Pub/Sub</h3><p>The messaging backbone under Eventarc that delivers bucket events reliably.</p><span class="tag">event transport</span></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════  STEP-BY-STEP  -->
+<section class="wrap">
+  <div class="reveal">
+    <div class="eyebrow">The Build, Step by Step</div>
+    <h2 class="sec">From zero to a live cloud deployment</h2>
+    <p class="lead">This is the exact order I set things up. Each step builds on the last — you can
+    follow it top to bottom to recreate the whole deployment.</p>
+  </div>
+
+  <div class="timeline">
+
+    <!-- STEP 1 -->
+    <div class="step reveal" style="--sc1:#4285F4;--sc2:#5b8def">
+      <div class="num">1</div>
+      <div class="body">
+        <h3>Log in &amp; point at my project <span class="chip">gcloud auth</span></h3>
+        <p>First I authenticated the CLI (twice — once for me, once for local Python scripts via
+        Application Default Credentials) and set the active project so every later command targets it.</p>
+        <pre><button class="copy">Copy</button><span class="cm"># Log in (browser) + local app credentials</span>
+<span class="cmd">gcloud</span> auth login
+<span class="cmd">gcloud</span> auth application-default login
+
+<span class="cm"># Lock every future command to this project</span>
+<span class="cmd">gcloud</span> config <span class="kw">set</span> project advanced-rag-project-500909</pre>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="step reveal" style="--sc1:#34A853;--sc2:#4cc36a">
+      <div class="num">2</div>
+      <div class="body">
+        <h3>Turn on the Google Cloud APIs I need <span class="chip">services enable</span></h3>
+        <p>Nothing works until the APIs are switched on. I enabled everything the system touches in one shot —
+        containers, AI, storage, database, and the event system.</p>
+        <pre><button class="copy">Copy</button><span class="cmd">gcloud</span> services enable <span class="flag">\</span>
+    artifactregistry.googleapis.com <span class="cm"># image registry</span> <span class="flag">\</span>
+    run.googleapis.com <span class="cm"># Cloud Run</span> <span class="flag">\</span>
+    cloudbuild.googleapis.com <span class="cm"># CI/CD builds</span> <span class="flag">\</span>
+    sqladmin.googleapis.com <span class="cm"># Cloud SQL</span> <span class="flag">\</span>
+    documentai.googleapis.com <span class="cm"># PDF parsing</span> <span class="flag">\</span>
+    aiplatform.googleapis.com <span class="cm"># Vertex AI embeddings</span> <span class="flag">\</span>
+    redis.googleapis.com eventarc.googleapis.com pubsub.googleapis.com <span class="flag">\</span>
+    compute.googleapis.com</pre>
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="step reveal" style="--sc1:#EA4335;--sc2:#f2685c">
+      <div class="num">3</div>
+      <div class="body">
+        <h3>Create the storage buckets <span class="chip">Cloud Storage</span></h3>
+        <p>Two buckets: one where raw documents get uploaded, and one where the parsed, cleaned text is saved.
+        The raw bucket also becomes the trigger source for automatic ingestion later.</p>
+        <pre><button class="copy">Copy</button><span class="cmd">gcloud</span> storage buckets create gs://advanced-rag-project-500909-rag-raw <span class="flag">--location</span>=<span class="str">us-central1</span>
+<span class="cmd">gcloud</span> storage buckets create gs://advanced-rag-project-500909-rag-processed <span class="flag">--location</span>=<span class="str">us-central1</span></pre>
+      </div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="step reveal" style="--sc1:#FBBC05;--sc2:#f7cb4a">
+      <div class="num">4</div>
+      <div class="body">
+        <h3>Grant permissions with IAM <span class="chip">least privilege</span></h3>
+        <p>Every actor gets only the roles it needs. My user account gets admin roles to build and deploy;
+        the <b>Compute service account</b> (which actually runs the builds and services) gets runtime roles;
+        and the <b>Cloud Run service agent</b> gets VPC access. A snapshot:</p>
+        <pre><button class="copy">Copy</button><span class="cm"># Give the runtime service account access to AI, docs & storage</span>
+<span class="cmd">gcloud</span> projects add-iam-policy-binding advanced-rag-project-500909 <span class="flag">\</span>
+    <span class="flag">--member</span>=<span class="str">"serviceAccount:872202826024-compute@developer.gserviceaccount.com"</span> <span class="flag">\</span>
+    <span class="flag">--role</span>=<span class="str">"roles/aiplatform.user"</span>          <span class="cm"># Vertex AI embeddings</span>
+<span class="cm"># repeated for: documentai.apiUser, storage.admin,</span>
+<span class="cm"># artifactregistry.writer, logging.logWriter, vpcaccess.user …</span></pre>
+        <p style="margin-top:12px">Full role map is in the table further down. ⬇️</p>
+      </div>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="step reveal" style="--sc1:#FBBC05;--sc2:#f6a821">
+      <div class="num">5</div>
+      <div class="body">
+        <h3>Create the image registry <span class="chip">Artifact Registry</span></h3>
+        <p>A private Docker repository to hold the container images. Cloud Build pushes here, Cloud Run pulls from here.</p>
+        <pre><button class="copy">Copy</button><span class="cmd">gcloud</span> artifacts repositories create rag-repo <span class="flag">\</span>
+    <span class="flag">--repository-format</span>=<span class="str">docker</span> <span class="flag">\</span>
+    <span class="flag">--location</span>=<span class="str">us-central1</span> <span class="flag">\</span>
+    <span class="flag">--description</span>=<span class="str">"Docker repository for RAG API"</span></pre>
+      </div>
+    </div>
+
+    <!-- STEP 6 -->
+    <div class="step reveal" style="--sc1:#34A853;--sc2:#2b8f47">
+      <div class="num">6</div>
+      <div class="body">
+        <h3>Build all 4 images in the cloud <span class="chip">Cloud Build</span></h3>
+        <p>Instead of building Docker images on my laptop, Cloud Build does it in Google's cloud and pushes
+        straight to Artifact Registry. My <code>cloudbuild.yaml</code> defines 4 parallel builds — one per microservice.</p>
+        <ul>
+          <li><b>backend</b> — FastAPI + LangGraph agent</li>
+          <li><b>ui</b> — Streamlit chat interface</li>
+          <li><b>ingestion</b> — document parser + embedder</li>
+          <li><b>evals</b> — RAGAS evaluation dashboard</li>
+        </ul>
+        <pre><button class="copy">Copy</button><span class="cm"># Builds & pushes all 4 images from one config file</span>
+<span class="cmd">gcloud</span> builds submit <span class="flag">--config</span> cloudbuild.yaml <span class="flag">--timeout</span>=<span class="str">7200</span> .</pre>
+      </div>
+    </div>
+
+    <!-- STEP 7 -->
+    <div class="step reveal" style="--sc1:#4285F4;--sc2:#3466c4">
+      <div class="num">7</div>
+      <div class="body">
+        <h3>Deploy the containers to Cloud Run <span class="chip">serverless</span></h3>
+        <p>Each image becomes a live, auto-scaling service. Config (API keys, bucket names, project ID) is
+        injected as environment variables at deploy time, so no secrets live inside the image.</p>
+        <pre><button class="copy">Copy</button><span class="cmd">gcloud</span> run deploy rag-api <span class="flag">\</span>
+  <span class="flag">--image</span> us-central1-docker.pkg.dev/advanced-rag-project-500909/rag-repo/rag-api:v1 <span class="flag">\</span>
+  <span class="flag">--region</span> us-central1  <span class="flag">--memory</span> 2Gi  <span class="flag">--timeout</span>=<span class="str">300</span> <span class="flag">\</span>
+  <span class="flag">--set-env-vars</span> <span class="str">"PROJECT_ID=advanced-rag-project-500909"</span> <span class="flag">\</span>
+  <span class="flag">--set-env-vars</span> <span class="str">"LOCATION=us-central1"</span> <span class="cm"># … + AI, bucket, DB vars</span></pre>
+        <p style="margin-top:12px">Four services go live: <code>rag-api</code>, <code>rag-ui</code>, <code>rag-ingestion</code>, <code>rag-evals</code> — all IAM-authenticated.</p>
+      </div>
+    </div>
+
+    <!-- STEP 8 -->
+    <div class="step reveal" style="--sc1:#7cc4ff;--sc2:#4285F4">
+      <div class="num">8</div>
+      <div class="body">
+        <h3>Add persistent memory <span class="chip">Cloud SQL · Postgres 15</span></h3>
+        <p>The agent needs to remember conversations across restarts and scale-to-zero. Cloud SQL Postgres 15
+        stores that memory. Cloud Run connects over a secure <b>unix socket</b> (<code>/cloudsql/…</code>) — no public IP.
+        If the DB is ever unreachable, the code automatically falls back to in-memory storage so nothing crashes.</p>
+        <ul>
+          <li>Database: <b>rag_memory</b> — written by LangGraph's <code>PostgresSaver</code></li>
+          <li>Connection: <b>unix socket</b>, authenticated with the <code>cloudsql.client</code> IAM role</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- STEP 9 -->
+    <div class="step reveal" style="--sc1:#EA4335;--sc2:#b91c1c">
+      <div class="num">9</div>
+      <div class="body">
+        <h3>Add a semantic cache + private networking <span class="chip">Memorystore · VPC</span></h3>
+        <p>Memorystore Redis holds recent answers. When a new question is <i>semantically</i> close to an old one
+        (cosine distance &lt; 0.15), the cached answer returns in ~50 ms — skipping the whole LLM pipeline.
+        Redis lives on a <b>private IP</b>, so Cloud Run reaches it through <b>Direct VPC Egress</b> on <code>rag-vpc</code>
+        rather than the public internet.</p>
+        <ul>
+          <li><b>Redis Memorystore</b> — semantic cache, private IP</li>
+          <li><b>Direct VPC Egress</b> — Cloud Run → Redis + Cloud SQL over internal network</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- STEP 10 -->
+    <div class="step reveal" style="--sc1:#6366f1;--sc2:#4338ca">
+      <div class="num">10</div>
+      <div class="body">
+        <h3>Wire up automatic ingestion <span class="chip">Eventarc · Pub/Sub</span></h3>
+        <p>The final piece makes ingestion hands-free. An <b>Eventarc</b> trigger listens for the
+        <code>object.finalized</code> event on the raw bucket. The moment any file is uploaded, it POSTs to the
+        ingestion Cloud Run service, which parses, chunks, embeds, and indexes it — fully automatic, verified end-to-end.</p>
+        <pre><button class="copy">Copy</button><span class="cm"># Test it: just drop a file in the bucket…</span>
+<span class="cmd">gcloud</span> storage cp any_doc.pdf gs://advanced-rag-project-500909-rag-raw/
+<span class="cm"># …and watch ingestion fire on its own</span>
+<span class="cmd">gcloud</span> run services logs read enterprise-rag-ingestion <span class="flag">--region</span> us-central1</pre>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════  BUILD → DEPLOY PIPELINE  -->
+<section class="wrap">
+  <div class="reveal">
+    <div class="eyebrow">Pipeline View</div>
+    <h2 class="sec">How code becomes a running service</h2>
+    <p class="lead">The CI/CD path — my source code turns into containers and goes live, all inside Google Cloud.</p>
+  </div>
+
+  <div class="flow reveal">
+    <div class="fnode"><div class="fi">💻</div><b>Source Code</b><small>app / ui / evals</small></div>
+    <div class="farrow"><span class="dot"></span>➜</div>
+    <div class="fnode"><div class="fi">🏗️</div><b>Cloud Build</b><small>4 parallel builds</small></div>
+    <div class="farrow"><span class="dot"></span>➜</div>
+    <div class="fnode"><div class="fi">📦</div><b>Artifact Registry</b><small>Docker images</small></div>
+    <div class="farrow"><span class="dot"></span>➜</div>
+    <div class="fnode"><div class="fi">🚀</div><b>Cloud Run</b><small>4 live services</small></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════  RUNTIME FLOWS  -->
+<section class="wrap">
+  <div class="reveal">
+    <div class="eyebrow">Runtime — What Happens Live</div>
+    <h2 class="sec">The two flows that use Google Cloud every day</h2>
+  </div>
+
+  <!-- Query flow -->
+  <div class="flowrap reveal">
+    <h3>💬 Flow A — Answering a user's question</h3>
+    <p class="d">A question travels through safety gates, then the agent searches documents and generates an answer.</p>
+    <div class="flow" style="margin-top:22px">
+      <div class="fnode"><div class="fi">🖥️</div><b>Streamlit UI</b><small>Cloud Run</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">⚡</div><b>FastAPI</b><small>Cloud Run</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">🔴</div><b>Redis Cache</b><small>hit? ~50ms</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">🔢</div><b>Vertex AI</b><small>embed query</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">🗄️</div><b>Vector Search</b><small>+ rerank</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">🐘</div><b>Cloud SQL</b><small>save memory</small></div>
+    </div>
+  </div>
+
+  <!-- Ingestion flow -->
+  <div class="flowrap reveal" style="margin-top:22px">
+    <h3>📥 Flow B — Ingesting a new document (fully automatic)</h3>
+    <p class="d">Upload a file and Google Cloud does the rest — no button to press.</p>
+    <div class="flow" style="margin-top:22px">
+      <div class="fnode"><div class="fi">☁️</div><b>GCS Raw</b><small>file uploaded</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">📡</div><b>Eventarc</b><small>object.finalized</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">🚀</div><b>Ingestion Svc</b><small>Cloud Run</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">📋</div><b>Document AI</b><small>parse PDF</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">🔢</div><b>Vertex AI</b><small>embed chunks</small></div>
+      <div class="farrow"><span class="dot"></span>➜</div>
+      <div class="fnode"><div class="fi">🗄️</div><b>Vector DB</b><small>+ GCS processed</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════  IAM TABLE  -->
+<section class="wrap">
+  <div class="reveal">
+    <div class="eyebrow">Security</div>
+    <h2 class="sec">Who is allowed to do what (IAM)</h2>
+    <p class="lead">Least-privilege roles I granted. The runtime <b>Compute service account</b> is the one that
+    actually executes builds and runs the services, so it carries the most operational roles.</p>
+  </div>
+  <table class="tbl reveal">
+    <thead><tr><th>Identity</th><th>Role granted</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>My user account</td><td><code>run.admin</code></td><td>Deploy &amp; manage Cloud Run</td></tr>
+      <tr><td>My user account</td><td><code>artifactregistry.admin</code></td><td>Manage the image repo</td></tr>
+      <tr><td>My user account</td><td><code>storage.admin</code> · <code>cloudsql.client</code></td><td>Buckets + DB access</td></tr>
+      <tr><td>Compute SA</td><td><code>aiplatform.user</code></td><td>Vertex AI embeddings at runtime</td></tr>
+      <tr><td>Compute SA</td><td><code>documentai.apiUser</code></td><td>Parse PDFs with Document AI</td></tr>
+      <tr><td>Compute SA</td><td><code>storage.admin</code></td><td>Read source, pull images, r/w buckets</td></tr>
+      <tr><td>Compute SA</td><td><code>artifactregistry.writer</code></td><td>Push built images</td></tr>
+      <tr><td>Compute SA</td><td><code>logging.logWriter</code></td><td>Write Cloud Build logs</td></tr>
+      <tr><td>Cloud Run service agent</td><td><code>vpcaccess.user</code></td><td>Reach Redis over the VPC</td></tr>
+      <tr><td>GCS service agent</td><td><code>pubsub.publisher</code></td><td>Publish bucket events for Eventarc</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════  SCALABLE / TERRAFORM  -->
+<section class="wrap">
+  <div class="reveal">
+    <div class="eyebrow">Going Further</div>
+    <h2 class="sec">Scaling it with Infrastructure-as-Code</h2>
+    <p class="lead">Beyond the manual <code>gcloud</code> path, I also captured the whole stack in <b>Terraform</b>, so
+    the entire environment — VPC, Redis, Cloud SQL, all 4 Cloud Run services, and the Eventarc trigger — can be
+    created or destroyed with a single command.</p>
+  </div>
+  <pre class="reveal"><button class="copy">Copy</button><span class="cm"># 1 — create the image repo first</span>
+<span class="cmd">terraform</span> apply <span class="flag">-target</span>=google_artifact_registry_repository.repo
+<span class="cm"># 2 — build & push all images</span>
+<span class="cmd">gcloud</span> builds submit <span class="flag">--config</span> cloudbuild.yaml <span class="flag">--timeout</span>=<span class="str">7200</span> .
+<span class="cm"># 3 — provision everything else (VPC, Redis, SQL, Cloud Run, Eventarc)</span>
+<span class="cmd">terraform</span> apply</pre>
+</section>
+
+<!-- ══════════════════════════════════════════  RECAP  -->
+<section class="wrap">
+  <div class="reveal">
+    <div class="eyebrow">In One Sentence</div>
+    <h2 class="sec">The whole thing, summarized</h2>
+    <p class="lead" style="font-size:18px">
+    I <b>enabled the APIs</b>, <b>created buckets + IAM roles</b>, <b>built my containers with Cloud Build</b> into
+    <b>Artifact Registry</b>, <b>deployed them on Cloud Run</b>, gave the agent <b>persistent memory (Cloud SQL)</b>
+    and a <b>fast semantic cache (Memorystore Redis)</b> over a <b>private VPC</b>, and used <b>Document AI + Vertex AI</b>
+    to read and understand documents — all triggered automatically by <b>Eventarc</b> the moment a file is uploaded.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="badge" style="margin-bottom:18px"><span class="g-dots"><i></i><i></i><i></i><i></i></span> Enterprise Agentic RAG on Google Cloud</div>
+  <p>Built &amp; documented by <b>Akash Kar</b> · Project <b>advanced-rag-project-500909</b> · Region <b>us-central1</b></p>
+</footer>
+
+<script>
+  /* ── floating dots ── */
+  (function(){
+    const f=document.getElementById('field');
+    for(let i=0;i<26;i++){
+      const s=document.createElement('span');
+      const size=Math.random()*10+4;
+      s.style.width=s.style.height=size+'px';
+      s.style.left=Math.random()*100+'vw';
+      s.style.animationDuration=(Math.random()*18+14)+'s';
+      s.style.animationDelay=(-Math.random()*20)+'s';
+      f.appendChild(s);
+    }
+  })();
+
+  /* ── scroll reveal ── */
+  const io=new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+  },{threshold:.12});
+  document.querySelectorAll('.reveal').forEach((el,i)=>{
+    el.style.transitionDelay=(i%4)*60+'ms';
+    io.observe(el);
+  });
+
+  /* ── progress bar ── */
+  const prog=document.getElementById('prog');
+  window.addEventListener('scroll',()=>{
+    const h=document.documentElement;
+    const pct=(h.scrollTop)/(h.scrollHeight-h.clientHeight)*100;
+    prog.style.width=pct+'%';
+  },{passive:true});
+
+  /* ── copy buttons ── */
+  document.querySelectorAll('pre .copy').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const pre=btn.parentElement.cloneNode(true);
+      pre.querySelector('.copy').remove();
+      navigator.clipboard.writeText(pre.innerText.trim()).then(()=>{
+        const t=btn.textContent; btn.textContent='Copied ✓';
+        setTimeout(()=>btn.textContent=t,1400);
+      });
+    });
+  });
+</script>
+</body>
+</html>

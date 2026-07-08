@@ -262,19 +262,52 @@ pip install -r requirements.txt
 
 Create `.env` — see [DOCS/07_ENVIRONMENT_VARIABLES.md](DOCS/07_ENVIRONMENT_VARIABLES.md) for all required keys.
 
+---
+
+#### 🖥️ Option A — Run Locally (fully local, no cloud needed)
+
+> Backend runs on your machine at `http://localhost:8000`. Streamlit connects to it directly.
+
 ```bash
-# Ingest documents locally
+# Step 1 — Activate your virtual environment
+source advned_rag_project/bin/activate
+
+# Step 2 — (Optional) Ingest documents into local vector DB
 python -m app.ingestion.processor DATA/true_data
 
-# Terminal 1 — backend
-uvicorn app.main:app --reload --port 8000
+# Terminal 1 — Start backend locally (skips Postgres, uses MemorySaver)
+LOCAL_MODE=true uvicorn app.main:app --reload --port 8000
 
-# Terminal 2 — UI
-streamlit run ui/app.py
+# Terminal 2 — Start Streamlit UI connected to LOCAL backend
+BACKEND_URL="http://localhost:8000" streamlit run ui/app.py
 
-# Terminal 3 — evals (optional)
-streamlit run evals/app.py
+# Terminal 3 — Evals UI (optional)
+BACKEND_URL="http://localhost:8000" streamlit run evals/app.py
 ```
+
+Open browser → **http://localhost:8501**
+
+---
+
+#### ☁️ Option B — Run UI Connected to Cloud Run Backend
+
+> Backend is already deployed on Google Cloud Run. Only run the Streamlit UI locally.
+
+```bash
+# Step 1 — Activate your virtual environment
+source advned_rag_project/bin/activate
+
+# Step 2 — Start Streamlit UI connected to Cloud Run backend
+# (BACKEND_URL is already set in .env — no need to override)
+streamlit run ui/app.py
+```
+
+Open browser → **http://localhost:8501**
+
+> **Note:** Cloud Run backend requires GCP authentication. Run `gcloud auth login` and
+> `gcloud auth application-default login` before starting the UI if you see auth errors.
+
+---
 
 ### Cloud deployment (scalable)
 
